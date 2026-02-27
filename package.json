@@ -1,0 +1,29 @@
+{
+  "name": "lianyue-platform",
+  "version": "0.1.0",
+  "description": "台越跨語言視訊交流平台 - Phase 0 Pipeline",
+  "type": "module",
+  "main": "src/pipeline/test.js",
+  "scripts": {
+    "test": "node src/pipeline/test.js",
+    "test:zh": "node src/pipeline/test.js zh",
+    "test:vi": "node src/pipeline/test.js vi",
+    "generate-audio": "node src/pipeline/generate-test-audio.js"
+  },
+  "keywords": [
+    "translation",
+    "speech-to-text",
+    "text-to-speech",
+    "chinese",
+    "vietnamese"
+  ],
+  "author": "",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@deepgram/sdk": "^4.11.3",
+    "@elevenlabs/elevenlabs-js": "^2.36.0",
+    "dotenv": "^16.4.5",
+    "openai": "^4.70.0"
+  }
+}
