@@ -1,11 +1,16 @@
 {
   "name": "lianyue-platform",
   "version": "0.1.0",
-  "description": "台越跨語言視訊交流平台 - Phase 0 Pipeline",
+  "description": "台越跨語言視訊交流平台",
   "type": "module",
-  "main": "src/pipeline/test.js",
+  "main": "src/api/server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
-    "test": "node src/pipeline/test.js",
+    "start": "node src/api/server.js",
+    "dev": "node --watch src/api/server.js",
+    "test:pipeline": "node src/pipeline/test.js",
     "test:zh": "node src/pipeline/test.js zh",
     "test:vi": "node src/pipeline/test.js vi",
     "generate-audio": "node src/pipeline/generate-test-audio.js"
@@ -23,7 +28,17 @@
   "dependencies": {
     "@deepgram/sdk": "^4.11.3",
     "@elevenlabs/elevenlabs-js": "^2.36.0",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "openai": "^4.70.0"
+    "express": "^4.21.0",
+    "helmet": "^8.0.0",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.70.0",
+    "pg": "^8.13.0",
+    "socket.io": "^4.8.0",
+    "uuid": "^10.0.0"
   }
 }
