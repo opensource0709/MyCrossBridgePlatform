@@ -195,37 +195,51 @@
   font-size: 0.9rem;
 }
 
-/* 字幕樣式 */
+/* 字幕樣式 - 原文+譯文上下排列 */
 .subtitle {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.85);
   color: white;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-size: 1.1rem;
-  max-width: 80%;
+  padding: 16px 28px;
+  border-radius: 12px;
+  max-width: 85%;
   text-align: center;
   animation: fadeIn 0.3s ease;
-  z-index: 100;  /* 確保字幕顯示在最上層 */
+  z-index: 100;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.subtitle-original {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 6px;
+}
+
+.subtitle-translated {
+  font-size: 1.3rem;
+  color: white;
+  font-weight: 500;
 }
 
 .subtitle-label {
+  font-size: 0.75rem;
   color: #4CAF50;
   font-weight: bold;
-  margin-right: 8px;
+  margin-right: 6px;
+  text-transform: uppercase;
 }
 
 .partner-subtitle {
   bottom: 180px;
-  background: rgba(102, 126, 234, 0.9);
+  border-left: 4px solid #667eea;
 }
 
 .my-subtitle {
-  bottom: 120px;
-  background: rgba(0, 0, 0, 0.8);
-  font-size: 1rem;
+  bottom: 100px;
+  border-left: 4px solid #4CAF50;
 }
 
 @keyframes fadeIn {

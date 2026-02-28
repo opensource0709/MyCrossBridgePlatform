@@ -34,19 +34,23 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
   const [status, setStatus] = useState('');
   const [isReady, setIsReady] = useState(false);
 
-  // 語音翻譯狀態
+  // 語音翻譯狀態 - 儲存原文和譯文
   const [isTranslating, setIsTranslating] = useState(false);
-  const [mySubtitle, setMySubtitle] = useState('');
-  const [partnerSubtitle, setPartnerSubtitle] = useState('');
+  const [mySubtitle, setMySubtitle] = useState({ original: '', translated: '' });
+  const [partnerSubtitle, setPartnerSubtitle] = useState({ original: '', translated: '' });
   const [latency, setLatency] = useState(0);
 
   // Debug: 監聽字幕 state 變化
   useEffect(() => {
-    console.log('[DEBUG] mySubtitle 變化:', mySubtitle);
+    if (mySubtitle.original || mySubtitle.translated) {
+      console.log('[DEBUG] mySubtitle:', mySubtitle);
+    }
   }, [mySubtitle]);
 
   useEffect(() => {
-    console.log('[DEBUG] partnerSubtitle 變化:', partnerSubtitle);
+    if (partnerSubtitle.original || partnerSubtitle.translated) {
+      console.log('[DEBUG] partnerSubtitle:', partnerSubtitle);
+    }
   }, [partnerSubtitle]);
 
   const localVideoRef = useRef(null);
@@ -495,24 +499,23 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
         return;
       }
 
-      console.log('[DEBUG] 這是對方的翻譯，準備顯示字幕和播放音訊');
-      console.log('[DEBUG] originalText:', data.originalText);
-      console.log('[DEBUG] translatedText:', data.translatedText);
-      console.log('[DEBUG] audio 長度:', data.audio?.length);
+      console.log('[DEBUG] 這是對方的翻譯，顯示字幕');
 
-      // 顯示對方說的話（翻譯後的版本）
-      setPartnerSubtitle(data.translatedText);
+      // 顯示對方說的話（原文 + 譯文）
+      setPartnerSubtitle({
+        original: data.originalText,
+        translated: data.translatedText,
+      });
       setLatency(data.latency || 0);
 
-      // 播放翻譯後的語音（這是對方說的話，翻譯成我的語言）
+      // 播放翻譯後的語音
       if (data.audio) {
-        console.log('[DEBUG] 播放翻譯語音...');
         playTranslatedAudio(data.audio);
       }
 
       // 5 秒後清除字幕
       setTimeout(() => {
-        setPartnerSubtitle('');
+        setPartnerSubtitle({ original: '', translated: '' });
       }, 5000);
     });
 
@@ -536,20 +539,18 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
 
         // 只處理自己說的話（顯示字幕，不播放音訊）
         if (data.type === 'my-speech') {
-          console.log('[DEBUG] ===== 收到 my-speech =====');
-          console.log('[DEBUG] originalText:', data.originalText);
-          console.log('[DEBUG] 準備呼叫 setMySubtitle...');
+          console.log('[DEBUG] 收到 my-speech:', data.originalText, '→', data.translatedText);
 
-          // 顯示我說的話
-          setMySubtitle(data.originalText);
-          console.log('[DEBUG] setMySubtitle 已呼叫，值:', data.originalText);
-
+          // 顯示我說的話（原文 + 譯文）
+          setMySubtitle({
+            original: data.originalText,
+            translated: data.translatedText,
+          });
           setLatency(data.latency?.total || 0);
 
           // 5 秒後清除字幕
           setTimeout(() => {
-            console.log('[DEBUG] 5秒到，清除 mySubtitle');
-            setMySubtitle('');
+            setMySubtitle({ original: '', translated: '' });
           }, 5000);
         } else if (data.type === 'connected') {
           console.log('[DEBUG] Voice WS 連線確認:', data.message);
@@ -661,8 +662,8 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
     }
 
     setIsTranslating(false);
-    setMySubtitle('');
-    setPartnerSubtitle('');
+    setMySubtitle({ original: '', translated: '' });
+    setPartnerSubtitle({ original: '', translated: '' });
     setStatus('');
   }, []);
 
@@ -746,15 +747,27 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
           </div>
         </div>
 
-        {/* 字幕區域 - 放在最外層確保顯示 */}
-        {partnerSubtitle && (
+        {/* 字幕區域 - 原文+譯文上下排列 */}
+        {(partnerSubtitle.original || partnerSubtitle.translated) && (
           <div className="subtitle partner-subtitle" style={{ zIndex: 999 }}>
-            <span className="subtitle-label">{partnerName}:</span> {partnerSubtitle}
+            <div className="subtitle-original">
+              <span className="subtitle-label">{partnerName}:</span>
+              {partnerSubtitle.original}
+            </div>
+            <div className="subtitle-translated">
+              {partnerSubtitle.translated}
+            </div>
           </div>
         )}
-        {mySubtitle && (
+        {(mySubtitle.original || mySubtitle.translated) && (
           <div className="subtitle my-subtitle" style={{ zIndex: 999 }}>
-            <span className="subtitle-label">我:</span> {mySubtitle}
+            <div className="subtitle-original">
+              <span className="subtitle-label">我:</span>
+              {mySubtitle.original}
+            </div>
+            <div className="subtitle-translated">
+              {mySubtitle.translated}
+            </div>
           </div>
         )}
 
@@ -769,12 +782,12 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
         <button
           onClick={() => {
             console.log('[DEBUG] 測試字幕按鈕被點擊');
-            setMySubtitle('測試：我說的話');
-            setPartnerSubtitle('Test: Partner speech');
+            setMySubtitle({ original: '我們下次再見', translated: 'Hẹn gặp lại lần sau nhé!' });
+            setPartnerSubtitle({ original: 'Xin chào bạn', translated: '你好' });
             setTimeout(() => {
-              setMySubtitle('');
-              setPartnerSubtitle('');
-            }, 3000);
+              setMySubtitle({ original: '', translated: '' });
+              setPartnerSubtitle({ original: '', translated: '' });
+            }, 5000);
           }}
           style={{
             position: 'absolute',
@@ -801,11 +814,13 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
           padding: '10px',
           background: 'rgba(0,0,0,0.8)',
           color: 'lime',
-          fontSize: '12px',
-          maxWidth: '200px',
+          fontSize: '11px',
+          maxWidth: '250px',
         }}>
-          mySubtitle: "{mySubtitle}"<br/>
-          partnerSubtitle: "{partnerSubtitle}"
+          我: {mySubtitle.original || '(空)'}<br/>
+          → {mySubtitle.translated || '(空)'}<br/>
+          對方: {partnerSubtitle.original || '(空)'}<br/>
+          → {partnerSubtitle.translated || '(空)'}
         </div>
 
         {/* 狀態訊息 */}
