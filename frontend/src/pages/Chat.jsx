@@ -36,11 +36,13 @@ export default function Chat() {
   const loadPartnerInfo = useCallback(async () => {
     try {
       const res = await matchingAPI.getMatches();
+      // API 回傳: match_id, id (partner's user id), display_name
       const match = res.data.find(m => m.match_id === matchId);
+      console.log('[Chat] Found match:', match);
       if (match) {
         setPartnerInfo({
-          id: match.partner_id,
-          name: match.partner_name || '對方',
+          id: match.id,  // partner's user id
+          name: match.display_name || '對方',
         });
       }
     } catch (err) {
@@ -183,8 +185,11 @@ export default function Chat() {
 
   // 發起通話
   const startCall = () => {
+    console.log('[Chat] startCall called, partnerInfo:', partnerInfo, 'callState:', callState);
+
     if (!partnerInfo.id) {
-      console.error('[Chat] No partner ID');
+      console.error('[Chat] No partner ID, cannot start call');
+      alert('無法取得對方資訊，請重新整理頁面');
       return;
     }
 
