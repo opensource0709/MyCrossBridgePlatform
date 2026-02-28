@@ -4,6 +4,7 @@
 import { createClient } from '@deepgram/sdk';
 import OpenAI from 'openai';
 import fs from 'fs';
+import { convertToWav } from './audioConverter.js';
 
 // 延遲初始化，避免在 import 時就需要 API Key
 let deepgram = null;
@@ -105,14 +106,19 @@ async function speechToTextDeepgramBuffer(audioBuffer, language) {
   console.log('[STT-Deepgram] 收到音訊，大小:', audioBuffer?.length, '語言:', language);
 
   try {
+    // 1. 先用 ffmpeg 把 webm 片段轉成 wav
+    console.log('[STT-Deepgram] 轉換 webm → wav...');
+    const wavBuffer = await convertToWav(audioBuffer);
+    console.log('[STT-Deepgram] 轉換完成，wav 大小:', wavBuffer.length);
+
+    // 2. 送給 Deepgram
     const { result } = await getDeepgram().listen.prerecorded.transcribeFile(
-      audioBuffer,
+      wavBuffer,
       {
         model: 'nova-2',
         language: DEEPGRAM_LANGUAGE_MAP[language],
         smart_format: true,
-        mimetype: 'audio/webm',
-        encoding: 'opus',  // 指定編碼格式
+        mimetype: 'audio/wav',
       }
     );
 
@@ -140,13 +146,14 @@ async function speechToTextWhisperBuffer(audioBuffer, language) {
   console.log('[STT-Whisper] 收到音訊，大小:', audioBuffer?.length, '語言:', language);
 
   try {
-    // 使用 OpenAI 的 toFile 函數正確傳送音訊
+    // 1. 先用 ffmpeg 把 webm 片段轉成 wav
+    console.log('[STT-Whisper] 轉換 webm → wav...');
+    const wavBuffer = await convertToWav(audioBuffer);
+    console.log('[STT-Whisper] 轉換完成，wav 大小:', wavBuffer.length);
+
+    // 2. 使用 OpenAI 的 toFile 函數傳送 wav 音訊
     const { toFile } = await import('openai');
-    const audioFile = await toFile(
-      Buffer.from(audioBuffer),
-      'audio.webm',
-      { type: 'audio/webm' }
-    );
+    const audioFile = await toFile(wavBuffer, 'audio.wav', { type: 'audio/wav' });
 
     const transcription = await getOpenAI().audio.transcriptions.create({
       file: audioFile,
