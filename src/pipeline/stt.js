@@ -111,7 +111,8 @@ async function speechToTextDeepgramBuffer(audioBuffer, language) {
         model: 'nova-2',
         language: DEEPGRAM_LANGUAGE_MAP[language],
         smart_format: true,
-        mimetype: 'audio/webm',  // 直接用 webm 格式
+        mimetype: 'audio/webm',
+        encoding: 'opus',  // 指定編碼格式
       }
     );
 
@@ -139,11 +140,16 @@ async function speechToTextWhisperBuffer(audioBuffer, language) {
   console.log('[STT-Whisper] 收到音訊，大小:', audioBuffer?.length, '語言:', language);
 
   try {
-    // Whisper 支援 webm 格式，直接使用
-    const file = new File([audioBuffer], 'audio.webm', { type: 'audio/webm' });
+    // 使用 OpenAI 的 toFile 函數正確傳送音訊
+    const { toFile } = await import('openai');
+    const audioFile = await toFile(
+      Buffer.from(audioBuffer),
+      'audio.webm',
+      { type: 'audio/webm' }
+    );
 
     const transcription = await getOpenAI().audio.transcriptions.create({
-      file: file,
+      file: audioFile,
       model: 'whisper-1',
       language: language,
     });
