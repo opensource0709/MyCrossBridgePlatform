@@ -118,32 +118,46 @@ async function handleAudioChunk(ws, audioBuffer) {
 
   // 確定語言
   const [sourceLang, targetLang] = direction.split('-to-');
-  console.log(`[VoiceWS] 收到音訊: ${audioBuffer.length} bytes, ${sourceLang} → ${targetLang}`);
+
+  console.log('='.repeat(50));
+  console.log('[STT] 收到音訊，大小：', audioBuffer.length);
+  console.log('[STT] 方向：', direction, '| 來源語言：', sourceLang);
 
   // 音訊太小可能是靜音，跳過
   if (audioBuffer.length < 1000) {
+    console.log('[STT] 音訊太小，跳過');
     return;
   }
 
   try {
     // 1. STT - 語音辨識（直接用 webm 格式）
+    console.log('[STT] 開始語音辨識...');
     const sttResult = await speechToTextFromBuffer(audioBuffer, sourceLang);
+    console.log('[STT] 辨識結果：', sttResult.text || '(空)');
+    console.log('[STT] 辨識耗時：', sttResult.elapsed, 'ms');
 
     if (!sttResult.text || sttResult.text.trim() === '') {
+      console.log('[STT] 無辨識結果，跳過');
       return;
     }
 
     // 2. 翻譯
+    console.log('[翻譯] 開始翻譯...');
     const translateResult = await translate(sttResult.text, direction);
+    console.log('[翻譯] 結果：', translateResult.text);
+    console.log('[翻譯] 耗時：', translateResult.elapsed, 'ms');
 
     // 3. TTS - 語音合成
+    console.log('[TTS] 開始語音合成...');
     const ttsResult = await textToSpeech(translateResult.text, targetLang);
+    console.log('[TTS] 合成完成，音訊大小：', ttsResult.buffer?.length);
+    console.log('[TTS] 耗時：', ttsResult.elapsed, 'ms');
 
     const totalElapsed = Date.now() - startTime;
-    console.log(`[VoiceWS] 翻譯完成: "${sttResult.text}" → "${translateResult.text}" (${totalElapsed}ms)`);
+    console.log('[完成] 總耗時：', totalElapsed, 'ms');
 
     // 4. 發送結果給說話者（字幕）
-    ws.send(JSON.stringify({
+    const mySpeechData = {
       type: 'my-speech',
       originalText: sttResult.text,
       translatedText: translateResult.text,
@@ -153,26 +167,38 @@ async function handleAudioChunk(ws, audioBuffer) {
         tts: ttsResult.elapsed,
         total: totalElapsed,
       },
-    }));
+    };
+    console.log('[WebSocket] 發送 my-speech 給說話者：', JSON.stringify(mySpeechData));
+    ws.send(JSON.stringify(mySpeechData));
 
     // 5. 發送給對方（語音 + 字幕）
     if (socketIO && matchId) {
       const room = socketIO.sockets.adapter.rooms.get(`match:${matchId}`);
-      console.log(`[VoiceWS] 發送到 match:${matchId}, 房間人數: ${room ? room.size : 0}`);
+      const roomSize = room ? room.size : 0;
+      console.log('[Socket] 房間 match:', matchId, '人數：', roomSize);
 
-      socketIO.to(`match:${matchId}`).emit('voice:translation', {
-        from: userId,
-        originalText: sttResult.text,
-        translatedText: translateResult.text,
-        audio: ttsResult.buffer.toString('base64'),
-        latency: totalElapsed,
-      });
+      if (roomSize > 0) {
+        const voiceData = {
+          from: userId,
+          originalText: sttResult.text,
+          translatedText: translateResult.text,
+          audio: ttsResult.buffer.toString('base64'),
+          latency: totalElapsed,
+        };
+        console.log('[Socket] 發送 voice:translation，audio 長度：', voiceData.audio.length);
+        socketIO.to(`match:${matchId}`).emit('voice:translation', voiceData);
+        console.log('[Socket] 已發送給對方');
+      } else {
+        console.log('[Socket] 房間沒有人，無法發送');
+      }
     } else {
-      console.warn('[VoiceWS] 無法發送: socketIO=', !!socketIO, 'matchId=', matchId);
+      console.warn('[Socket] 無法發送: socketIO=', !!socketIO, 'matchId=', matchId);
     }
+    console.log('='.repeat(50));
 
   } catch (error) {
-    console.error('[VoiceWS] 翻譯錯誤:', error.message);
+    console.error('[錯誤] 翻譯失敗:', error.message);
+    console.error('[錯誤] 堆疊:', error.stack);
     ws.send(JSON.stringify({
       type: 'error',
       message: '翻譯失敗: ' + (error.message || '未知錯誤'),

@@ -718,13 +718,6 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
             )}
           </div>
           {remoteVideoTrack && <div className="partner-name">{partnerName}</div>}
-
-          {/* 對方說的話（翻譯成我的語言） */}
-          {partnerSubtitle && (
-            <div className="subtitle partner-subtitle">
-              <span className="subtitle-label">{partnerName}:</span> {partnerSubtitle}
-            </div>
-          )}
         </div>
 
         {/* 本地視訊（小畫面） */}
@@ -738,9 +731,14 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
           </div>
         </div>
 
-        {/* 我說的話字幕 */}
+        {/* 字幕區域 - 放在最外層確保顯示 */}
+        {partnerSubtitle && (
+          <div className="subtitle partner-subtitle" style={{ zIndex: 999 }}>
+            <span className="subtitle-label">{partnerName}:</span> {partnerSubtitle}
+          </div>
+        )}
         {mySubtitle && (
-          <div className="subtitle my-subtitle">
+          <div className="subtitle my-subtitle" style={{ zIndex: 999 }}>
             <span className="subtitle-label">我:</span> {mySubtitle}
           </div>
         )}
