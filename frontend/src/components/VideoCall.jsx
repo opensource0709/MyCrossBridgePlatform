@@ -98,9 +98,13 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
     const client = clientRef.current;
 
     try {
-      // 如果已經在頻道中，先離開
-      if (client.connectionState === 'CONNECTED') {
+      // 檢查連線狀態，如果已連線則先離開
+      console.log('[VideoCall] Current connection state:', client.connectionState);
+      if (client.connectionState !== 'DISCONNECTED') {
+        console.log('[VideoCall] Leaving previous channel...');
         await client.leave();
+        // 等待一下確保狀態更新
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
       // 1. 取得 Agora Token
@@ -108,13 +112,26 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
       const response = await api.post('/api/agora/token', {
         channelName: matchId
       });
-      const { token, appId } = response.data;
-      console.log('[VideoCall] Got token for channel:', matchId);
+      const { token, appId, uid: tokenUid } = response.data;
+      console.log('[VideoCall] Got token for channel:', matchId, 'appId:', appId);
 
-      // 2. 加入頻道
+      // 2. 加入頻道 (使用 token 中的 uid，如果是 0 則讓 SDK 自動分配)
       setStatus('加入頻道...');
-      const uid = await client.join(appId, matchId, token, null);
-      console.log('[VideoCall] Joined channel with uid:', uid);
+      const joinUid = tokenUid === 0 ? null : tokenUid;
+      console.log('[VideoCall] Joining channel:', matchId, 'with uid:', joinUid);
+
+      let actualUid;
+      try {
+        actualUid = await client.join(appId, matchId, token, joinUid);
+        console.log('[VideoCall] Joined channel successfully, uid:', actualUid);
+        console.log('[VideoCall] Connection state after join:', client.connectionState);
+      } catch (joinError) {
+        console.error('[VideoCall] Join failed:', joinError);
+        throw new Error(`加入頻道失敗: ${joinError.message}`);
+      }
+
+      // 等待連線狀態穩定
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       // 3. 建立本地軌道
       setStatus('取得麥克風和相機...');
@@ -151,9 +168,17 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
       setStatus('發布媒體...');
       const tracksToPublish = [audioTrack, videoTrack].filter(Boolean);
 
+      // 確認已成功加入頻道
+      if (client.connectionState !== 'CONNECTED') {
+        throw new Error('加入頻道失敗，請重試');
+      }
+
       if (tracksToPublish.length > 0) {
+        console.log('[VideoCall] Publishing tracks...');
         await client.publish(tracksToPublish);
         console.log('[VideoCall] Published tracks:', tracksToPublish.length);
+      } else {
+        console.warn('[VideoCall] No tracks to publish');
       }
 
       setIsConnected(true);
