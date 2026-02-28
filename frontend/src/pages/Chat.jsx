@@ -81,18 +81,42 @@ export default function Chat() {
     const token = localStorage.getItem('token');
     socketRef.current = io(SOCKET_URL, {
       auth: { token },
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     });
 
-    // 用戶上線
-    if (user?.id) {
-      socketRef.current.emit('user:online', user.id);
+    const socket = socketRef.current;
+
+    // 連接成功時註冊用戶
+    const registerUser = () => {
+      if (user?.id) {
+        console.log('[Chat] Registering user online:', user.id);
+        socket.emit('user:online', user.id);
+      }
+      console.log('[Chat] Joining chat room:', matchId);
+      socket.emit('chat:join', matchId);
+    };
+
+    // 初次連接
+    socket.on('connect', () => {
+      console.log('[Chat] WebSocket connected, socket.id:', socket.id);
+      registerUser();
+    });
+
+    // 重新連接
+    socket.on('reconnect', (attemptNumber) => {
+      console.log('[Chat] WebSocket reconnected after', attemptNumber, 'attempts');
+      registerUser();
+    });
+
+    // 如果已經連接，立即註冊
+    if (socket.connected) {
+      registerUser();
     }
 
-    // 加入聊天室
-    socketRef.current.emit('chat:join', matchId);
-
     // 監聽新訊息
-    socketRef.current.on('message:received', (message) => {
+    socket.on('message:received', (message) => {
       if (message.matchId === matchId) {
         setMessages((prev) => {
           if (prev.find(m => m.id === message.id)) return prev;
@@ -113,27 +137,30 @@ export default function Chat() {
     // === 通話信令事件 ===
 
     // 收到來電
-    socketRef.current.on('call:incoming', (data) => {
+    socket.on('call:incoming', (data) => {
       console.log('[Chat] Incoming call from:', data.from);
-      if (callState === 'idle') {
-        setCallState('incoming');
-        // 可以從 data.from 取得來電者資訊
-      }
+      setCallState((prevState) => {
+        if (prevState === 'idle') {
+          console.log('[Chat] Setting callState to incoming');
+          return 'incoming';
+        }
+        console.log('[Chat] Ignoring incoming call, already in state:', prevState);
+        return prevState;
+      });
     });
 
     // 對方接聽
-    socketRef.current.on('call:accepted', (data) => {
+    socket.on('call:accepted', (data) => {
       console.log('[Chat] Call accepted by:', data.from);
       clearTimeout(callTimeoutRef.current);
       setCallState('connected');
     });
 
     // 對方拒絕
-    socketRef.current.on('call:rejected', (data) => {
+    socket.on('call:rejected', (data) => {
       console.log('[Chat] Call rejected by:', data.from);
       clearTimeout(callTimeoutRef.current);
       setCallStatus('rejected');
-      // 3 秒後關閉
       setTimeout(() => {
         setCallState('idle');
         setCallStatus('calling');
@@ -141,23 +168,25 @@ export default function Chat() {
     });
 
     // 對方取消來電
-    socketRef.current.on('call:cancelled', (data) => {
+    socket.on('call:cancelled', (data) => {
       console.log('[Chat] Call cancelled by:', data.from);
-      if (callState === 'incoming') {
-        setCallState('idle');
-      }
+      setCallState((prevState) => {
+        if (prevState === 'incoming') return 'idle';
+        return prevState;
+      });
     });
 
     // 未接來電
-    socketRef.current.on('call:missed', (data) => {
+    socket.on('call:missed', (data) => {
       console.log('[Chat] Missed call from:', data.from);
-      if (callState === 'incoming') {
-        setCallState('idle');
-      }
+      setCallState((prevState) => {
+        if (prevState === 'incoming') return 'idle';
+        return prevState;
+      });
     });
 
     // 通話結束
-    socketRef.current.on('call:ended', (data) => {
+    socket.on('call:ended', (data) => {
       console.log('[Chat] Call ended by:', data.from);
       setCallState('idle');
       setCallStatus('calling');
@@ -166,12 +195,22 @@ export default function Chat() {
     // 備用：每 3 秒輪詢一次
     const pollInterval = setInterval(loadMessages, 3000);
 
+    // 連線錯誤處理
+    socket.on('connect_error', (err) => {
+      console.error('[Chat] WebSocket connect error:', err.message);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('[Chat] WebSocket disconnected:', reason);
+    });
+
     return () => {
+      console.log('[Chat] Cleaning up WebSocket');
       clearTimeout(callTimeoutRef.current);
-      socketRef.current?.disconnect();
+      socket.disconnect();
       clearInterval(pollInterval);
     };
-  }, [matchId, loadMessages, loadPartnerInfo, user?.id, callState]);
+  }, [matchId, loadMessages, loadPartnerInfo, user?.id]); // 移除 callState，避免重複連接
 
   useEffect(() => {
     scrollToBottom();
