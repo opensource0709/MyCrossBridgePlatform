@@ -2,7 +2,8 @@
 // Agora 視訊通話 Token 產生 API
 
 import { Router } from 'express';
-import { RtcTokenBuilder, RtcRole } from 'agora-access-token';
+import pkg from 'agora-access-token';
+const { RtcTokenBuilder, RtcRole } = pkg;
 import { authenticate } from '../middleware/auth.js';
 
 const router = Router();
