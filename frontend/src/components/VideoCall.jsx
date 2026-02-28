@@ -131,16 +131,31 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
 
       let actualUid;
       try {
+        console.log('[VideoCall] Calling client.join...');
         actualUid = await client.join(appId, matchId, token, joinUid);
-        console.log('[VideoCall] Joined channel successfully, uid:', actualUid);
-        console.log('[VideoCall] Connection state after join:', client.connectionState);
+        console.log('[VideoCall] client.join() returned, uid:', actualUid);
+        console.log('[VideoCall] Connection state immediately after join:', client.connectionState);
       } catch (joinError) {
-        console.error('[VideoCall] Join failed:', joinError);
-        throw new Error(`加入頻道失敗: ${joinError.message}`);
+        console.error('[VideoCall] Join failed with error:', joinError);
+        console.error('[VideoCall] Error name:', joinError.name);
+        console.error('[VideoCall] Error code:', joinError.code);
+        throw new Error(`加入頻道失敗: ${joinError.message || joinError.code || 'Unknown error'}`);
       }
 
-      // 等待連線狀態穩定
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // 等待連線狀態變成 CONNECTED
+      let waitCount = 0;
+      while (client.connectionState !== 'CONNECTED' && waitCount < 10) {
+        console.log('[VideoCall] Waiting for CONNECTED state, current:', client.connectionState);
+        await new Promise(resolve => setTimeout(resolve, 200));
+        waitCount++;
+      }
+
+      if (client.connectionState !== 'CONNECTED') {
+        console.error('[VideoCall] Failed to reach CONNECTED state, current:', client.connectionState);
+        throw new Error('無法連接到頻道，請重試');
+      }
+
+      console.log('[VideoCall] Connection state confirmed CONNECTED');
 
       // 3. 建立本地軌道
       setStatus('取得麥克風和相機...');
