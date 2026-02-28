@@ -571,53 +571,65 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
       console.log('[DEBUG] Voice WebSocket 關閉, code:', event.code, 'reason:', event.reason);
     };
 
-    // 3. 開始錄音
+    // 3. 開始錄音（完整錄音模式，每 3 秒產生完整 webm 檔案）
     console.log('[DEBUG] 步驟3: 開始錄音...');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       console.log('[DEBUG] 取得麥克風成功');
 
-      // 診斷：檢查瀏覽器支援的 mimeType
-      console.log('[DEBUG] ===== MediaRecorder mimeType 診斷 =====');
-      console.log('[DEBUG] audio/webm;codecs=opus 支援:', MediaRecorder.isTypeSupported('audio/webm;codecs=opus'));
-      console.log('[DEBUG] audio/webm 支援:', MediaRecorder.isTypeSupported('audio/webm'));
-      console.log('[DEBUG] audio/ogg;codecs=opus 支援:', MediaRecorder.isTypeSupported('audio/ogg;codecs=opus'));
-      console.log('[DEBUG] audio/mp4 支援:', MediaRecorder.isTypeSupported('audio/mp4'));
-      console.log('[DEBUG] audio/wav 支援:', MediaRecorder.isTypeSupported('audio/wav'));
-
       // 選擇支援的 mimeType
       let selectedMimeType = 'audio/webm;codecs=opus';
       if (!MediaRecorder.isTypeSupported(selectedMimeType)) {
-        if (MediaRecorder.isTypeSupported('audio/webm')) {
-          selectedMimeType = 'audio/webm';
-        } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
-          selectedMimeType = 'audio/ogg;codecs=opus';
-        } else {
-          selectedMimeType = ''; // 使用瀏覽器預設
-        }
+        selectedMimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
       }
-      console.log('[DEBUG] 選擇的 mimeType:', selectedMimeType);
+      console.log('[DEBUG] 使用 mimeType:', selectedMimeType);
 
-      const recorderOptions = selectedMimeType ? { mimeType: selectedMimeType } : {};
-      mediaRecorderRef.current = new MediaRecorder(stream, recorderOptions);
-      console.log('[DEBUG] 實際使用的 mimeType:', mediaRecorderRef.current.mimeType);
-
+      // 儲存 stream 以便重新建立 recorder
+      const audioStream = stream;
+      let recordingInterval = null;
       let chunkCount = 0;
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        chunkCount++;
-        console.log(`[DEBUG] 錄音片段 #${chunkCount}, 大小: ${event.data.size} bytes`);
-        if (event.data.size > 0 && voiceWsRef.current?.readyState === WebSocket.OPEN) {
-          console.log('[DEBUG] 發送音訊到 WebSocket...');
-          voiceWsRef.current.send(event.data);
-        } else {
-          console.log('[DEBUG] 無法發送: size=', event.data.size, 'wsState=', voiceWsRef.current?.readyState);
-        }
+
+      // 建立新的 recorder 並開始錄音
+      const startNewRecording = () => {
+        if (!audioStream.active) return;
+
+        const recorderOptions = selectedMimeType ? { mimeType: selectedMimeType } : {};
+        const recorder = new MediaRecorder(audioStream, recorderOptions);
+
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0 && voiceWsRef.current?.readyState === WebSocket.OPEN) {
+            chunkCount++;
+            console.log(`[錄音] 片段 #${chunkCount}, 大小: ${event.data.size} bytes`);
+            // 送出完整的 webm blob
+            event.data.arrayBuffer().then(buffer => {
+              voiceWsRef.current.send(buffer);
+              console.log('[錄音] 已發送完整音訊');
+            });
+          }
+        };
+
+        recorder.onstop = () => {
+          // 如果還在翻譯模式，重新開始錄音
+          if (voiceWsRef.current?.readyState === WebSocket.OPEN) {
+            startNewRecording();
+          }
+        };
+
+        recorder.start();
+        mediaRecorderRef.current = recorder;
+
+        // 3 秒後停止（產生完整檔案）
+        setTimeout(() => {
+          if (recorder.state === 'recording') {
+            recorder.stop();
+          }
+        }, 3000);
       };
 
-      // 每 2 秒傳一次音訊片段
-      mediaRecorderRef.current.start(2000);
+      // 開始第一次錄音
+      startNewRecording();
       setIsTranslating(true);
-      console.log('[DEBUG] 錄音開始，每 2 秒發送一次');
+      console.log('[DEBUG] 錄音開始，每 3 秒產生完整音訊');
     } catch (err) {
       console.error('[DEBUG] 錄音啟動失敗:', err);
       setError('無法啟用麥克風錄音');
@@ -628,15 +640,18 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
   const stopTranslation = useCallback(() => {
     console.log('[VideoCall] Stopping translation');
 
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      mediaRecorderRef.current = null;
-    }
-
+    // 先關閉 WebSocket，這樣 onstop 不會重新開始錄音
     if (voiceWsRef.current) {
       voiceWsRef.current.close();
       voiceWsRef.current = null;
+    }
+
+    if (mediaRecorderRef.current) {
+      if (mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+      mediaRecorderRef.current.stream?.getTracks().forEach(track => track.stop());
+      mediaRecorderRef.current = null;
     }
 
     // 關閉 Socket.IO 連接
