@@ -109,6 +109,40 @@ export function initVoiceTranslation(server) {
   return wss;
 }
 
+// 黑名單 - 過濾已知的雜訊文字
+const NOISE_BLACKLIST = [
+  'Amara.org',
+  'amara',
+  '字幕',
+  'subtitle',
+  'subtitles',
+  '提供',
+  '社群',
+  'community',
+  '謝謝收看',
+  '感謝收看',
+  '訂閱',
+  'subscribe',
+];
+
+/**
+ * 計算音訊 RMS（均方根）音量
+ */
+function calculateRMS(buffer) {
+  // WebM 是壓縮格式，無法直接計算 RMS
+  // 改用檔案大小作為音量的粗略估計
+  // 靜音的 WebM 通常很小（< 2000 bytes for 3 seconds）
+  return buffer.length;
+}
+
+/**
+ * 檢查是否為雜訊文字
+ */
+function isNoiseText(text) {
+  const lowerText = text.toLowerCase();
+  return NOISE_BLACKLIST.some(word => lowerText.includes(word.toLowerCase()));
+}
+
 /**
  * 處理音訊片段
  */
@@ -121,25 +155,40 @@ async function handleAudioChunk(ws, audioBuffer) {
 
   console.log('='.repeat(50));
   console.log('[STT] 收到音訊，大小：', audioBuffer.length);
-  console.log('[STT] 方向：', direction, '| 來源語言：', sourceLang);
 
-  // 音訊太小可能是靜音，跳過
-  if (audioBuffer.length < 1000) {
-    console.log('[STT] 音訊太小，跳過');
+  // 1. 靜音偵測 - 音量太低不送 STT
+  const rms = calculateRMS(audioBuffer);
+  if (rms < 3000) {
+    console.log('[STT] 音量太低，跳過 (rms:', rms, ')');
     return;
   }
 
   try {
-    // 1. STT - 語音辨識（直接用 webm 格式）
+    // 2. STT - 語音辨識
     console.log('[STT] 開始語音辨識...');
     const sttResult = await speechToTextFromBuffer(audioBuffer, sourceLang);
     console.log('[STT] 辨識結果：', sttResult.text || '(空)');
-    console.log('[STT] 辨識耗時：', sttResult.elapsed, 'ms');
 
     if (!sttResult.text || sttResult.text.trim() === '') {
       console.log('[STT] 無辨識結果，跳過');
       return;
     }
+
+    const text = sttResult.text.trim();
+
+    // 3. 太短的結果過濾
+    if (text.length < 3) {
+      console.log('[STT] 結果太短，跳過:', text);
+      return;
+    }
+
+    // 4. 黑名單過濾 - 過濾已知的雜訊文字
+    if (isNoiseText(text)) {
+      console.log('[STT] 雜訊文字，跳過:', text);
+      return;
+    }
+
+    console.log('[STT] 有效辨識結果：', text);
 
     // 2. 翻譯
     console.log('[翻譯] 開始翻譯...');
