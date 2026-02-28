@@ -58,7 +58,8 @@ AI 驅動的跨語言視訊交流平台，專為台灣男性與越南女性打�
 │   │   ├── db/                ← PostgreSQL 連線
 │   │   ├── routes/            ← API 路由
 │   │   └── middleware/        ← 認證、錯誤處理
-│   ├── video/                 ← Agora 視訊整合（Phase 2）
+│   ├── video/                 ← Agora 視訊整合 🚧
+│   │   └── (整合在 frontend/src/components/VideoCall.jsx)
 │   └── ai/                    ← AI 深度功能（Phase 3）
 ├── frontend/                  ← React 網頁版 ✅
 │   └── src/
@@ -100,9 +101,9 @@ AWS_SECRET_ACCESS_KEY=
 ---
 
 ## 目前開發階段
-**Phase 1 — MVP 網頁版** ✅ 已完成（2026-02-28）
+**Phase 2-A — Agora 視訊通話整合** 🚧 進行中（2026-02-28）
 
-下一階段：Phase 2 — 視訊通話＋即時語音翻譯＋App
+已完成基礎視訊通話功能，雙方可視訊對話。
 
 ---
 
@@ -140,6 +141,17 @@ AWS_SECRET_ACCESS_KEY=
 - [x] AI 翻譯整合（訊息自動翻譯）
 - [x] 個人資料頁（頭像上傳、年齡、自介、興趣標籤）
 - [x] 上線部署（Vercel + Railway + Neon）
+
+#### Phase 2-A — Agora 視訊通話 🚧
+- [x] Agora.io 帳號申請與設定
+- [x] 後端 Token 產生 API（/api/agora/token）
+- [x] 前端 VideoCall 元件（視訊/語音通話 UI）
+- [x] Agora RTC SDK 整合（加入頻道、發布/訂閱媒體流）
+- [x] 本地/遠端視訊顯示
+- [x] 通話控制（靜音、關閉視訊、結束通話）
+- [x] 媒體軌道正確清理（攝影機/麥克風釋放）
+- [ ] 通話邀請/接聽 UI（WebSocket 信令）
+- [ ] 通話中即時語音翻譯整合
 
 #### Phase 1 待辦（未來）
 - [ ] 付費訂閱整合
