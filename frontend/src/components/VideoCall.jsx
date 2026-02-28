@@ -200,15 +200,23 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
       setStatus('連接失敗');
 
       // 清理
-      localAudioTrack?.close();
-      localVideoTrack?.close();
+      if (localAudioTrack) {
+        localAudioTrack.stop();
+        localAudioTrack.close();
+      }
+      if (localVideoTrack) {
+        localVideoTrack.stop();
+        localVideoTrack.close();
+      }
       setLocalAudioTrack(null);
       setLocalVideoTrack(null);
 
       try {
-        await client.leave();
+        if (client.connectionState !== 'DISCONNECTED') {
+          await client.leave();
+        }
       } catch (e) {
-        // ignore
+        console.warn('[VideoCall] Error leaving channel:', e);
       }
     } finally {
       setIsConnecting(false);
@@ -218,23 +226,37 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
   // 結束通話
   const endCall = async () => {
     const client = clientRef.current;
+    console.log('[VideoCall] Ending call...');
 
     try {
-      localAudioTrack?.close();
-      localVideoTrack?.close();
+      // 停止並關閉本地音訊軌道
+      if (localAudioTrack) {
+        console.log('[VideoCall] Stopping audio track');
+        localAudioTrack.stop();
+        localAudioTrack.close();
+      }
+
+      // 停止並關閉本地視訊軌道
+      if (localVideoTrack) {
+        console.log('[VideoCall] Stopping video track');
+        localVideoTrack.stop();
+        localVideoTrack.close();
+      }
 
       setLocalAudioTrack(null);
       setLocalVideoTrack(null);
       setRemoteVideoTrack(null);
       setRemoteAudioTrack(null);
 
-      if (client.connectionState === 'CONNECTED') {
+      // 離開頻道
+      if (client && client.connectionState !== 'DISCONNECTED') {
+        console.log('[VideoCall] Leaving channel...');
         await client.leave();
       }
 
       setIsConnected(false);
       setStatus('');
-      console.log('[VideoCall] Call ended');
+      console.log('[VideoCall] Call ended successfully');
       onClose?.();
     } catch (err) {
       console.error('[VideoCall] Error ending call:', err);
@@ -261,9 +283,21 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
   // 元件卸載時清理
   useEffect(() => {
     return () => {
-      localAudioTrack?.close();
-      localVideoTrack?.close();
-      clientRef.current?.leave().catch(() => {});
+      console.log('[VideoCall] Component unmounting, cleaning up...');
+      if (localAudioTrack) {
+        localAudioTrack.stop();
+        localAudioTrack.close();
+      }
+      if (localVideoTrack) {
+        localVideoTrack.stop();
+        localVideoTrack.close();
+      }
+      const client = clientRef.current;
+      if (client && client.connectionState !== 'DISCONNECTED') {
+        client.leave().catch((e) => {
+          console.warn('[VideoCall] Error leaving on unmount:', e);
+        });
+      }
     };
   }, [localAudioTrack, localVideoTrack]);
 
