@@ -171,10 +171,33 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
 
       // 嘗試取得麥克風
       try {
-        audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-        localAudioTrackRef.current = audioTrack;
-        setLocalAudioTrack(audioTrack);
-        console.log('[VideoCall] Got audio track');
+        // 手機瀏覽器可能需要不同的音訊配置
+        const audioConfigs = [
+          { AEC: true, ANS: true, AGC: true }, // 啟用回音消除、降噪、自動增益
+          {}, // 預設配置
+        ];
+
+        let audioError = null;
+        for (let i = 0; i < audioConfigs.length; i++) {
+          try {
+            console.log(`[VideoCall] Trying audio config ${i + 1}:`, audioConfigs[i]);
+            audioTrack = await AgoraRTC.createMicrophoneAudioTrack(audioConfigs[i]);
+            console.log('[VideoCall] Audio config succeeded:', i + 1);
+            break;
+          } catch (configErr) {
+            console.warn(`[VideoCall] Audio config ${i + 1} failed:`, configErr.message);
+            audioError = configErr;
+            audioTrack = null;
+          }
+        }
+
+        if (audioTrack) {
+          localAudioTrackRef.current = audioTrack;
+          setLocalAudioTrack(audioTrack);
+          console.log('[VideoCall] Got audio track');
+        } else {
+          console.warn('[VideoCall] 無法取得麥克風:', audioError?.message);
+        }
       } catch (audioErr) {
         console.warn('[VideoCall] 無法取得麥克風:', audioErr.message);
       }
@@ -182,7 +205,43 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
       // 嘗試取得相機
       if (withVideo) {
         try {
-          videoTrack = await AgoraRTC.createCameraVideoTrack();
+          // 手機瀏覽器需要指定 facingMode 和較低的解析度
+          const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+          console.log('[VideoCall] Device type:', isMobile ? 'Mobile' : 'Desktop');
+
+          // 嘗試不同的相機配置
+          const cameraConfigs = [
+            // 配置 1: 手機前置鏡頭，低解析度
+            {
+              facingMode: 'user',
+              encoderConfig: isMobile ? '480p_1' : '720p_1',
+            },
+            // 配置 2: 不指定 facingMode
+            {
+              encoderConfig: isMobile ? '480p_1' : '720p_1',
+            },
+            // 配置 3: 最基本配置
+            {},
+          ];
+
+          let cameraError = null;
+          for (let i = 0; i < cameraConfigs.length; i++) {
+            try {
+              console.log(`[VideoCall] Trying camera config ${i + 1}:`, cameraConfigs[i]);
+              videoTrack = await AgoraRTC.createCameraVideoTrack(cameraConfigs[i]);
+              console.log('[VideoCall] Camera config succeeded:', i + 1);
+              break; // 成功就跳出
+            } catch (configErr) {
+              console.warn(`[VideoCall] Camera config ${i + 1} failed:`, configErr.message);
+              cameraError = configErr;
+              videoTrack = null;
+            }
+          }
+
+          if (!videoTrack) {
+            throw cameraError || new Error('All camera configs failed');
+          }
+
           localVideoTrackRef.current = videoTrack;
           setLocalVideoTrack(videoTrack);
           console.log('[VideoCall] Got video track');
@@ -192,8 +251,8 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
             videoTrack.play(localVideoRef.current);
           }
         } catch (videoErr) {
-          console.warn('[VideoCall] 無法取得相機:', videoErr.message);
-          setError('相機無法使用，僅語音模式');
+          console.warn('[VideoCall] 無法取得相機:', videoErr.message, videoErr);
+          setError(`相機無法使用：${videoErr.message || '未知錯誤'}，僅語音模式`);
         }
       }
 
