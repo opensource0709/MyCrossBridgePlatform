@@ -58,7 +58,7 @@ AI 驅動的跨語言視訊交流平台，專為台灣男性與越南女性打�
 │   │   ├── db/                ← PostgreSQL 連線
 │   │   ├── routes/            ← API 路由
 │   │   └── middleware/        ← 認證、錯誤處理
-│   ├── video/                 ← Agora 視訊整合 🚧
+│   ├── video/                 ← Agora 視訊整合 ✅
 │   │   └── (整合在 frontend/src/components/VideoCall.jsx)
 │   └── ai/                    ← AI 深度功能（Phase 3）
 ├── frontend/                  ← React 網頁版 ✅
@@ -90,13 +90,14 @@ AWS_SECRET_ACCESS_KEY=
 
 ## 開發階段總覽
 
-| 階段 | 時間 | 目標 |
-|------|------|------|
-| Phase 0 | 第 1～2 週 | 翻譯 Pipeline POC，本地跑通 |
-| Phase 1 | 第 1～2 個月 | MVP 網頁版上線，文字翻譯＋基本配對 |
-| Phase 2 | 第 3～5 個月 | 視訊通話＋即時語音翻譯＋App |
-| Phase 3 | 第 6～9 個月 | AI 記憶庫＋關係教練＋深度功能 |
-| Phase 4 | 第 10～12 個月 | 成長優化、擴展、App 上架 |
+| 階段 | 時間 | 目標 | 狀態 |
+|------|------|------|------|
+| Phase 0 | 第 1～2 週 | 翻譯 Pipeline POC，本地跑通 | ✅ 完成 |
+| Phase 1 | 第 1～2 個月 | MVP 網頁版上線，文字翻譯＋基本配對 | ✅ 完成 |
+| Phase 2-A | - | Agora 視訊通話整合 | ✅ 完成 |
+| Phase 2-B | 第 3～5 個月 | 即時語音翻譯＋App | ⏳ 待開始 |
+| Phase 3 | 第 6～9 個月 | AI 記憶庫＋關係教練＋深度功能 | |
+| Phase 4 | 第 10～12 個月 | 成長優化、擴展、App 上架 | |
 
 ---
 
