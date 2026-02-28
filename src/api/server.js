@@ -25,6 +25,9 @@ import agoraRoutes from './routes/agora.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { rateLimiter } from './middleware/rateLimit.js';
 
+// WebSocket
+import { initVoiceTranslation } from './websocket/voiceTranslation.js';
+
 const app = express();
 const httpServer = createServer(app);
 
@@ -163,11 +166,15 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
+// 初始化語音翻譯 WebSocket
+initVoiceTranslation(httpServer);
+
 // 啟動伺服器
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`🚀 伺服器運行中: http://localhost:${PORT}`);
   console.log(`📡 WebSocket 已啟用`);
+  console.log(`🎙️ 語音翻譯 WebSocket: /ws/voice`);
 });
 
 export { app, io };

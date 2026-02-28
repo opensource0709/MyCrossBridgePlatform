@@ -1,15 +1,20 @@
 // src/components/VideoCall.jsx
-// 視訊通話元件
+// 視訊通話元件（含即時語音翻譯）
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import AgoraRTC from 'agora-rtc-sdk-ng';
+import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
 import './VideoCall.css';
 
 // 設定 Agora SDK 日誌等級
 AgoraRTC.setLogLevel(1); // 0: DEBUG, 1: INFO, 2: WARNING, 3: ERROR, 4: NONE
 
+const WS_URL = import.meta.env.VITE_API_URL?.replace('http', 'ws') || 'ws://localhost:3000';
+
 export default function VideoCall({ matchId, partnerName, onClose }) {
+  const { user } = useAuth();
+
   // 使用 ref 來保存 tracks，確保 cleanup 時可以正確存取
   const clientRef = useRef(null);
   const localAudioTrackRef = useRef(null);
@@ -27,9 +32,20 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
   const [status, setStatus] = useState('');
   const [isReady, setIsReady] = useState(false);
 
+  // 語音翻譯狀態
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [mySubtitle, setMySubtitle] = useState('');
+  const [partnerSubtitle, setPartnerSubtitle] = useState('');
+  const [latency, setLatency] = useState(0);
+
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const startCallRef = useRef(null);
+
+  // 語音翻譯 refs
+  const voiceWsRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioContextRef = useRef(null);
 
   // 初始化 Agora client
   useEffect(() => {
@@ -392,10 +408,143 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
     }
   };
 
+  // === 語音翻譯功能 ===
+
+  // 播放翻譯後的語音
+  const playTranslatedAudio = useCallback(async (base64Audio) => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+
+      const audioData = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
+      const audioBuffer = await audioContextRef.current.decodeAudioData(audioData.buffer);
+
+      const source = audioContextRef.current.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContextRef.current.destination);
+      source.start(0);
+    } catch (err) {
+      console.error('[VideoCall] 播放翻譯語音失敗:', err);
+    }
+  }, []);
+
+  // 開始語音翻譯
+  const startTranslation = useCallback(async () => {
+    if (isTranslating) return;
+
+    const token = localStorage.getItem('token');
+    const direction = user?.role === 'taiwan' ? 'zh-to-vi' : 'vi-to-zh';
+
+    console.log('[VideoCall] Starting translation, direction:', direction);
+
+    // 連接語音翻譯 WebSocket
+    const wsUrl = `${WS_URL}/ws/voice?token=${token}&direction=${direction}`;
+    voiceWsRef.current = new WebSocket(wsUrl);
+
+    voiceWsRef.current.onopen = () => {
+      console.log('[VideoCall] Voice WebSocket connected');
+      setStatus('翻譯已開啟');
+    };
+
+    voiceWsRef.current.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'translation') {
+          console.log('[VideoCall] Translation received:', data.originalText, '→', data.translatedText);
+
+          // 更新字幕
+          setMySubtitle(data.originalText);
+          setPartnerSubtitle(data.translatedText);
+          setLatency(data.latency?.total || 0);
+
+          // 播放翻譯後的語音
+          if (data.audio) {
+            playTranslatedAudio(data.audio);
+          }
+
+          // 5 秒後清除字幕
+          setTimeout(() => {
+            setMySubtitle('');
+            setPartnerSubtitle('');
+          }, 5000);
+        } else if (data.type === 'error') {
+          console.error('[VideoCall] Translation error:', data.message);
+        }
+      } catch (err) {
+        console.error('[VideoCall] Failed to parse WebSocket message:', err);
+      }
+    };
+
+    voiceWsRef.current.onerror = (err) => {
+      console.error('[VideoCall] Voice WebSocket error:', err);
+    };
+
+    voiceWsRef.current.onclose = () => {
+      console.log('[VideoCall] Voice WebSocket closed');
+    };
+
+    // 開始錄音
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus',
+      });
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0 && voiceWsRef.current?.readyState === WebSocket.OPEN) {
+          voiceWsRef.current.send(event.data);
+        }
+      };
+
+      // 每 2 秒傳一次音訊片段
+      mediaRecorderRef.current.start(2000);
+      setIsTranslating(true);
+      console.log('[VideoCall] Recording started, sending every 2 seconds');
+    } catch (err) {
+      console.error('[VideoCall] Failed to start recording:', err);
+      setError('無法啟用麥克風錄音');
+    }
+  }, [isTranslating, user?.role, playTranslatedAudio]);
+
+  // 停止語音翻譯
+  const stopTranslation = useCallback(() => {
+    console.log('[VideoCall] Stopping translation');
+
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      mediaRecorderRef.current = null;
+    }
+
+    if (voiceWsRef.current) {
+      voiceWsRef.current.close();
+      voiceWsRef.current = null;
+    }
+
+    setIsTranslating(false);
+    setMySubtitle('');
+    setPartnerSubtitle('');
+    setStatus('');
+  }, []);
+
   // 元件卸載時清理 - 使用 refs 確保正確清理
   useEffect(() => {
     return () => {
       console.log('[VideoCall] Component unmounting, cleaning up...');
+
+      // 清理語音翻譯
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stream?.getTracks().forEach(track => track.stop());
+      }
+      if (voiceWsRef.current) {
+        voiceWsRef.current.close();
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
 
       // 使用 refs 而非 state 來確保取得最新的 track
       const audioTrack = localAudioTrackRef.current;
@@ -444,6 +593,13 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
             )}
           </div>
           {remoteVideoTrack && <div className="partner-name">{partnerName}</div>}
+
+          {/* 對方的翻譯字幕（顯示我說的話翻譯後的版本） */}
+          {partnerSubtitle && (
+            <div className="subtitle partner-subtitle">
+              <span className="subtitle-label">翻譯:</span> {partnerSubtitle}
+            </div>
+          )}
         </div>
 
         {/* 本地視訊（小畫面） */}
@@ -456,6 +612,20 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
             )}
           </div>
         </div>
+
+        {/* 我說的話字幕 */}
+        {mySubtitle && (
+          <div className="subtitle my-subtitle">
+            <span className="subtitle-label">我:</span> {mySubtitle}
+          </div>
+        )}
+
+        {/* 翻譯延遲指示器 */}
+        {isTranslating && latency > 0 && (
+          <div className="latency-indicator">
+            AI 翻譯延遲: {(latency / 1000).toFixed(1)}s
+          </div>
+        )}
 
         {/* 狀態訊息 */}
         {status && (
@@ -473,6 +643,16 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
 
         {/* 控制按鈕 */}
         <div className="video-controls">
+          {/* 翻譯開關按鈕 */}
+          <button
+            onClick={isTranslating ? stopTranslation : startTranslation}
+            className={`control-btn ${isTranslating ? 'active translate-on' : ''}`}
+            title={isTranslating ? '關閉翻譯' : '開啟翻譯'}
+            disabled={!isConnected}
+          >
+            {isTranslating ? '🌐' : '🗣️'}
+          </button>
+
           {/* 靜音按鈕 */}
           <button
             onClick={toggleMute}
