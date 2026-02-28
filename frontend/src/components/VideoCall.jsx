@@ -10,7 +10,8 @@ import './VideoCall.css';
 AgoraRTC.setLogLevel(1); // 0: DEBUG, 1: INFO, 2: WARNING, 3: ERROR, 4: NONE
 
 export default function VideoCall({ matchId, partnerName, onClose }) {
-  const clientRef = useRef(null);
+  // 在 ref 初始化時就創建 client，確保它在第一次渲染時就存在
+  const clientRef = useRef(AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' }));
   const [localVideoTrack, setLocalVideoTrack] = useState(null);
   const [localAudioTrack, setLocalAudioTrack] = useState(null);
   const [remoteVideoTrack, setRemoteVideoTrack] = useState(null);
@@ -21,15 +22,15 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [error, setError] = useState(null);
   const [status, setStatus] = useState('');
+  const [isReady, setIsReady] = useState(false);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
 
-  // 初始化 Agora client
+  // 設定 Agora client 事件監聽
   useEffect(() => {
-    clientRef.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-
     const client = clientRef.current;
+    if (!client) return;
 
     // 監聽遠端用戶發布
     client.on('user-published', async (user, mediaType) => {
@@ -72,7 +73,7 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
       setStatus('對方已離開');
     });
 
-    // 監聽連線狀態
+    // 監聯連線狀態
     client.on('connection-state-change', (curState, prevState) => {
       console.log('[VideoCall] Connection state:', prevState, '->', curState);
       if (curState === 'DISCONNECTED') {
@@ -81,8 +82,12 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
       }
     });
 
+    setIsReady(true);
+    console.log('[VideoCall] Client initialized and ready');
+
     return () => {
       // 清理
+      console.log('[VideoCall] Cleaning up client listeners');
       client.removeAllListeners();
     };
   }, []);
@@ -91,11 +96,15 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
   const startCall = async (withVideo = true) => {
     if (isConnecting || isConnected) return;
 
+    const client = clientRef.current;
+    if (!client) {
+      setError('系統初始化中，請稍後再試');
+      return;
+    }
+
     setIsConnecting(true);
     setError(null);
     setStatus('正在連接...');
-
-    const client = clientRef.current;
 
     try {
       // 檢查連線狀態，如果已連線則先離開
