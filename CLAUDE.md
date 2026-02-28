@@ -101,9 +101,9 @@ AWS_SECRET_ACCESS_KEY=
 ---
 
 ## 目前開發階段
-**Phase 2-A — Agora 視訊通話整合** 🚧 進行中（2026-02-28）
+**Phase 2-B — 即時語音翻譯整合** ⏳ 待開始
 
-已完成基礎視訊通話功能，雙方可視訊對話。
+下一步：將語音翻譯 Pipeline 整合到視訊通話中
 
 ---
 
@@ -142,7 +142,7 @@ AWS_SECRET_ACCESS_KEY=
 - [x] 個人資料頁（頭像上傳、年齡、自介、興趣標籤）
 - [x] 上線部署（Vercel + Railway + Neon）
 
-#### Phase 2-A — Agora 視訊通話 🚧
+#### Phase 2-A — Agora 視訊通話 ✅（2026-02-28）
 - [x] Agora.io 帳號申請與設定
 - [x] 後端 Token 產生 API（/api/agora/token）
 - [x] 前端 VideoCall 元件（視訊/語音通話 UI）
@@ -150,6 +150,10 @@ AWS_SECRET_ACCESS_KEY=
 - [x] 本地/遠端視訊顯示
 - [x] 通話控制（靜音、關閉視訊、結束通話）
 - [x] 媒體軌道正確清理（攝影機/麥克風釋放）
+- [x] 手機瀏覽器相容性（facingMode、多重配置回退）
+- [x] 雙向視訊測試通過（電腦 + 手機）
+
+#### Phase 2-B — 即時語音翻譯（待開發）
 - [ ] 通話邀請/接聽 UI（WebSocket 信令）
 - [ ] 通話中即時語音翻譯整合
 
