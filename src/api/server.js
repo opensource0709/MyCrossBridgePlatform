@@ -19,6 +19,7 @@ import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
 import matchingRoutes from './routes/matching.js';
 import messagesRoutes from './routes/messages.js';
+import agoraRoutes from './routes/agora.js';
 
 // Middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -57,6 +58,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/matching', matchingRoutes);
 app.use('/api/messages', messagesRoutes);
+app.use('/api/agora', agoraRoutes);
 
 // WebSocket 連接處理
 io.on('connection', (socket) => {
@@ -84,6 +86,46 @@ io.on('connection', (socket) => {
       senderId: socket.userId,
       text,
       timestamp: new Date().toISOString(),
+    });
+  });
+
+  // 視訊通話邀請
+  socket.on('call:invite', (data) => {
+    const { matchId, to } = data;
+    console.log(`[WebSocket] 視訊邀請: ${socket.userId} -> ${to}`);
+    io.to(`user:${to}`).emit('call:incoming', {
+      matchId,
+      from: socket.userId,
+    });
+  });
+
+  // 接受視訊通話
+  socket.on('call:accept', (data) => {
+    const { matchId, to } = data;
+    console.log(`[WebSocket] 視訊接受: ${socket.userId} -> ${to}`);
+    io.to(`user:${to}`).emit('call:accepted', {
+      matchId,
+      from: socket.userId,
+    });
+  });
+
+  // 拒絕視訊通話
+  socket.on('call:reject', (data) => {
+    const { matchId, to } = data;
+    console.log(`[WebSocket] 視訊拒絕: ${socket.userId} -> ${to}`);
+    io.to(`user:${to}`).emit('call:rejected', {
+      matchId,
+      from: socket.userId,
+    });
+  });
+
+  // 結束視訊通話
+  socket.on('call:end', (data) => {
+    const { matchId } = data;
+    console.log(`[WebSocket] 視訊結束: ${socket.userId}, matchId: ${matchId}`);
+    io.to(`match:${matchId}`).emit('call:ended', {
+      matchId,
+      from: socket.userId,
     });
   });
 

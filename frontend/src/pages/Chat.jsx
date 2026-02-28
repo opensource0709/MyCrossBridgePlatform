@@ -5,6 +5,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { messagesAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import VideoCall from '../components/VideoCall';
 import './Chat.css';
 
 const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -18,6 +19,8 @@ export default function Chat() {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [showVideoCall, setShowVideoCall] = useState(false);
+  const [partnerName, setPartnerName] = useState('');
 
   const messagesEndRef = useRef(null);
   const socketRef = useRef(null);
@@ -26,12 +29,18 @@ export default function Chat() {
     try {
       const res = await messagesAPI.getMessages(matchId);
       setMessages(res.data);
+
+      // 從訊息中取得對方的名字
+      const partnerMsg = res.data.find(m => m.sender_id !== user?.id);
+      if (partnerMsg) {
+        setPartnerName(partnerMsg.sender_name || '對方');
+      }
     } catch (err) {
       console.error('載入訊息失敗', err);
     } finally {
       setLoading(false);
     }
-  }, [matchId]);
+  }, [matchId, user?.id]);
 
   useEffect(() => {
     loadMessages();
@@ -127,8 +136,23 @@ export default function Chat() {
           ← 返回
         </button>
         <h1>聊天</h1>
-        <div className="header-spacer"></div>
+        <button
+          onClick={() => setShowVideoCall(true)}
+          className="video-call-btn"
+          title="視訊通話"
+        >
+          📹
+        </button>
       </header>
+
+      {/* 視訊通話 */}
+      {showVideoCall && (
+        <VideoCall
+          matchId={matchId}
+          partnerName={partnerName || '對方'}
+          onClose={() => setShowVideoCall(false)}
+        />
+      )}
 
       <div className="messages-container">
         {messages.length === 0 ? (

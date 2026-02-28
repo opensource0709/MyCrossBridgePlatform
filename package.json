@@ -28,6 +28,7 @@
   "dependencies": {
     "@deepgram/sdk": "^4.11.3",
     "@elevenlabs/elevenlabs-js": "^2.36.0",
+    "agora-access-token": "^2.0.4",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

@@ -36,8 +36,23 @@
   color: #333;
 }
 
-.header-spacer {
-  width: 60px;
+.video-call-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s;
+}
+
+.video-call-btn:hover {
+  transform: scale(1.1);
 }
 
 .messages-container {

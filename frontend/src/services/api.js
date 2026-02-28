@@ -61,4 +61,10 @@ export const messagesAPI = {
   sendMessage: (matchId, text) => api.post(`/api/messages/${matchId}`, { text }),
 };
 
+// Agora API
+export const agoraAPI = {
+  getToken: (channelName) => api.post('/api/agora/token', { channelName }),
+  getConfig: () => api.get('/api/agora/config'),
+};
+
 export default api;
