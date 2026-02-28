@@ -95,16 +95,16 @@ AWS_SECRET_ACCESS_KEY=
 | Phase 0 | 第 1～2 週 | 翻譯 Pipeline POC，本地跑通 | ✅ 完成 |
 | Phase 1 | 第 1～2 個月 | MVP 網頁版上線，文字翻譯＋基本配對 | ✅ 完成 |
 | Phase 2-A | - | Agora 視訊通話 + 通話邀請UI | ✅ 完成 |
-| Phase 2-B | 第 3～5 個月 | 即時語音翻譯＋App | ⏳ 待開始 |
+| Phase 2-B | 第 3～5 個月 | 即時語音翻譯＋App | 🚧 進行中 |
 | Phase 3 | 第 6～9 個月 | AI 記憶庫＋關係教練＋深度功能 | |
 | Phase 4 | 第 10～12 個月 | 成長優化、擴展、App 上架 | |
 
 ---
 
 ## 目前開發階段
-**Phase 2-B — 即時語音翻譯整合** ⏳ 待開始
+**Phase 2-B — 即時語音翻譯整合** 🚧 進行中（2026-02-28）
 
-Phase 2-A 已全部完成，下一步：將語音翻譯 Pipeline 整合到視訊通話中
+視訊通話中的即時語音翻譯功能已實作，待測試驗證。
 
 ---
 
@@ -158,8 +158,15 @@ Phase 2-A 已全部完成，下一步：將語音翻譯 Pipeline 整合到視訊
   - OutgoingCall 元件：撥打中畫面、取消按鈕
   - WebSocket 事件：invite, accept, reject, cancel, timeout
 
-#### Phase 2-B — 即時語音翻譯（待開發）
-- [ ] 通話中即時語音翻譯整合
+#### Phase 2-B — 即時語音翻譯 🚧
+- [x] 後端語音翻譯 WebSocket（/ws/voice）
+- [x] STT 支援 Buffer 輸入（Whisper + Deepgram）
+- [x] 前端錄音並每 2 秒傳送音訊
+- [x] 接收翻譯結果並播放語音
+- [x] 雙語字幕顯示（我說的話 + 翻譯）
+- [x] 翻譯延遲指示器
+- [ ] 實際測試驗證
+- [ ] 延遲優化（目標 < 3 秒）
 
 #### Phase 1 待辦（未來）
 - [ ] 付費訂閱整合
