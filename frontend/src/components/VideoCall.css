@@ -169,17 +169,30 @@
   font-size: 1.2rem;
 }
 
+/* 狀態訊息 */
+.status-message {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
 /* 錯誤訊息 */
 .error-message {
   position: absolute;
-  top: 50%;
+  top: 70px;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   background: rgba(255, 68, 68, 0.9);
   color: white;
-  padding: 16px 32px;
+  padding: 12px 24px;
   border-radius: 8px;
-  font-size: 1rem;
+  font-size: 0.9rem;
 }
 
 /* 響應式設計 */
