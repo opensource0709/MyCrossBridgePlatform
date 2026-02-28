@@ -129,6 +129,26 @@ io.on('connection', (socket) => {
     });
   });
 
+  // 取消通話邀請（發起方取消）
+  socket.on('call:cancel', (data) => {
+    const { matchId, to } = data;
+    console.log(`[WebSocket] 通話取消: ${socket.userId} -> ${to}`);
+    io.to(`user:${to}`).emit('call:cancelled', {
+      matchId,
+      from: socket.userId,
+    });
+  });
+
+  // 通話超時（30秒未接聽）
+  socket.on('call:timeout', (data) => {
+    const { matchId, to } = data;
+    console.log(`[WebSocket] 通話超時: ${socket.userId} -> ${to}`);
+    io.to(`user:${to}`).emit('call:missed', {
+      matchId,
+      from: socket.userId,
+    });
+  });
+
   // 用戶離線
   socket.on('disconnect', () => {
     console.log(`[WebSocket] 用戶離線: ${socket.userId || socket.id}`);

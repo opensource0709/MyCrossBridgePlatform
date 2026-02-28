@@ -29,6 +29,7 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const startCallRef = useRef(null);
 
   // 初始化 Agora client
   useEffect(() => {
@@ -89,6 +90,9 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
 
     setIsReady(true);
     console.log('[VideoCall] Client initialized and ready');
+
+    // 自動開始通話
+    startCallRef.current?.();
 
     return () => {
       // 清理
@@ -308,6 +312,17 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
     }
   };
 
+  // 儲存 startCall 到 ref，讓 useEffect 可以呼叫
+  startCallRef.current = () => startCall(true);
+
+  // 自動開始通話
+  useEffect(() => {
+    if (isReady && !isConnected && !isConnecting) {
+      console.log('[VideoCall] Auto-starting call...');
+      startCall(true);
+    }
+  }, [isReady]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 結束通話 - 使用 useCallback 確保穩定的引用
   const endCall = useCallback(async () => {
     const client = clientRef.current;
@@ -423,7 +438,7 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
             {!remoteVideoTrack && (
               <div className="video-placeholder">
                 <span className="placeholder-text">
-                  {isConnected ? `等待 ${partnerName} 加入...` : '點擊下方按鈕開始通話'}
+                  {isConnecting ? '連接中...' : isConnected ? `等待 ${partnerName} 的畫面...` : '準備中...'}
                 </span>
               </div>
             )}
@@ -458,56 +473,33 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
 
         {/* 控制按鈕 */}
         <div className="video-controls">
-          {!isConnected ? (
-            <>
-              <button
-                onClick={() => startCall(true)}
-                className="control-btn start-btn"
-                disabled={isConnecting}
-              >
-                {isConnecting ? '連接中...' : '📹 視訊通話'}
-              </button>
-              <button
-                onClick={() => startCall(false)}
-                className="control-btn start-btn audio-only"
-                disabled={isConnecting}
-              >
-                {isConnecting ? '連接中...' : '🎤 僅語音'}
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={toggleMute}
-                className={`control-btn ${isMuted ? 'active' : ''}`}
-                title={isMuted ? '取消靜音' : '靜音'}
-              >
-                {isMuted ? '🔇' : '🎤'}
-              </button>
-              {localVideoTrack && (
-                <button
-                  onClick={toggleVideo}
-                  className={`control-btn ${isVideoOff ? 'active' : ''}`}
-                  title={isVideoOff ? '開啟視訊' : '關閉視訊'}
-                >
-                  {isVideoOff ? '📷' : '🎥'}
-                </button>
-              )}
-              <button
-                onClick={endCall}
-                className="control-btn end-btn"
-                title="結束通話"
-              >
-                📞
-              </button>
-            </>
-          )}
+          {/* 靜音按鈕 */}
+          <button
+            onClick={toggleMute}
+            className={`control-btn ${isMuted ? 'active' : ''}`}
+            title={isMuted ? '取消靜音' : '靜音'}
+            disabled={!localAudioTrack}
+          >
+            {isMuted ? '🔇' : '🎤'}
+          </button>
+
+          {/* 視訊開關按鈕 */}
+          <button
+            onClick={toggleVideo}
+            className={`control-btn ${isVideoOff ? 'active' : ''}`}
+            title={isVideoOff ? '開啟視訊' : '關閉視訊'}
+            disabled={!localVideoTrack}
+          >
+            {isVideoOff ? '📷' : '🎥'}
+          </button>
+
+          {/* 結束通話按鈕 */}
           <button
             onClick={endCall}
-            className="control-btn close-btn"
-            title="關閉"
+            className="control-btn end-btn"
+            title="結束通話"
           >
-            ✕
+            📞
           </button>
         </div>
       </div>

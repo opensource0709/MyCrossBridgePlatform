@@ -1,0 +1,214 @@
+/* src/components/IncomingCall.css */
+/* 來電通知樣式 */
+
+.incoming-call-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.incoming-call-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px;
+  text-align: center;
+}
+
+/* 來電者頭像 */
+.caller-avatar {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  margin-bottom: 30px;
+}
+
+.avatar-placeholder {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  color: white;
+  font-weight: bold;
+  position: relative;
+  z-index: 2;
+}
+
+/* 脈衝動畫效果 */
+.pulse-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.5);
+  animation: pulse 2s infinite;
+}
+
+.pulse-ring.delay {
+  animation-delay: 1s;
+}
+
+@keyframes pulse {
+  0% {
+    width: 120px;
+    height: 120px;
+    opacity: 1;
+  }
+  100% {
+    width: 200px;
+    height: 200px;
+    opacity: 0;
+  }
+}
+
+/* 來電資訊 */
+.caller-info {
+  margin-bottom: 50px;
+}
+
+.caller-name {
+  color: white;
+  font-size: 28px;
+  margin: 0 0 10px 0;
+  font-weight: 600;
+}
+
+.call-status {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 18px;
+  margin: 0 0 15px 0;
+}
+
+.countdown {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  margin: 0;
+}
+
+/* 控制按鈕 */
+.call-actions {
+  display: flex;
+  gap: 60px;
+}
+
+.call-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.call-btn:hover {
+  transform: scale(1.1);
+}
+
+.call-btn:active {
+  transform: scale(0.95);
+}
+
+.btn-icon {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+
+.call-btn.reject .btn-icon {
+  background: #ff4444;
+  color: white;
+}
+
+.call-btn.accept .btn-icon {
+  background: #4CAF50;
+  color: white;
+}
+
+.btn-label {
+  color: white;
+  font-size: 14px;
+}
+
+/* 響應式設計 */
+@media (max-width: 480px) {
+  .incoming-call-container {
+    padding: 30px;
+  }
+
+  .caller-avatar {
+    width: 100px;
+    height: 100px;
+  }
+
+  .avatar-placeholder {
+    width: 100px;
+    height: 100px;
+    font-size: 40px;
+  }
+
+  .pulse-ring {
+    width: 100px;
+    height: 100px;
+  }
+
+  @keyframes pulse {
+    0% {
+      width: 100px;
+      height: 100px;
+      opacity: 1;
+    }
+    100% {
+      width: 160px;
+      height: 160px;
+      opacity: 0;
+    }
+  }
+
+  .caller-name {
+    font-size: 24px;
+  }
+
+  .call-status {
+    font-size: 16px;
+  }
+
+  .call-actions {
+    gap: 40px;
+  }
+
+  .btn-icon {
+    width: 60px;
+    height: 60px;
+    font-size: 24px;
+  }
+}

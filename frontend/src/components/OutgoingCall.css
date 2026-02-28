@@ -1,0 +1,201 @@
+/* src/components/OutgoingCall.css */
+/* 撥打中樣式 */
+
+.outgoing-call-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.outgoing-call-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px;
+  text-align: center;
+}
+
+/* 對方頭像 */
+.callee-avatar {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  margin-bottom: 30px;
+}
+
+.callee-avatar .avatar-placeholder {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  color: white;
+  font-weight: bold;
+  position: relative;
+  z-index: 2;
+}
+
+/* 呼叫中動畫 */
+.calling-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 2px solid rgba(102, 126, 234, 0.5);
+  animation: calling 1.5s infinite;
+}
+
+.calling-ring.delay {
+  animation-delay: 0.75s;
+}
+
+@keyframes calling {
+  0% {
+    width: 120px;
+    height: 120px;
+    opacity: 1;
+  }
+  100% {
+    width: 180px;
+    height: 180px;
+    opacity: 0;
+  }
+}
+
+/* 通話資訊 */
+.call-info {
+  margin-bottom: 60px;
+}
+
+.callee-name {
+  color: white;
+  font-size: 28px;
+  margin: 0 0 15px 0;
+  font-weight: 600;
+}
+
+.call-status {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 18px;
+  margin: 0;
+  min-height: 27px; /* 防止文字變化時跳動 */
+}
+
+.call-status.error {
+  color: #ff6b6b;
+}
+
+/* 取消按鈕 */
+.call-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.cancel-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.cancel-btn:hover {
+  transform: scale(1.1);
+}
+
+.cancel-btn:active {
+  transform: scale(0.95);
+}
+
+.cancel-btn .btn-icon {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: #ff4444;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+
+.cancel-btn .btn-label {
+  color: white;
+  font-size: 14px;
+}
+
+/* 響應式設計 */
+@media (max-width: 480px) {
+  .outgoing-call-container {
+    padding: 30px;
+  }
+
+  .callee-avatar {
+    width: 100px;
+    height: 100px;
+  }
+
+  .callee-avatar .avatar-placeholder {
+    width: 100px;
+    height: 100px;
+    font-size: 40px;
+  }
+
+  .calling-ring {
+    width: 100px;
+    height: 100px;
+  }
+
+  @keyframes calling {
+    0% {
+      width: 100px;
+      height: 100px;
+      opacity: 1;
+    }
+    100% {
+      width: 150px;
+      height: 150px;
+      opacity: 0;
+    }
+  }
+
+  .callee-name {
+    font-size: 24px;
+  }
+
+  .call-status {
+    font-size: 16px;
+  }
+
+  .cancel-btn .btn-icon {
+    width: 60px;
+    height: 60px;
+    font-size: 24px;
+  }
+}
