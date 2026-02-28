@@ -147,11 +147,8 @@ async function handleAudioChunk(ws, audioBuffer) {
     console.log('[翻譯] 結果：', translateResult.text);
     console.log('[翻譯] 耗時：', translateResult.elapsed, 'ms');
 
-    // 3. TTS - 語音合成
-    console.log('[TTS] 開始語音合成...');
-    const ttsResult = await textToSpeech(translateResult.text, targetLang);
-    console.log('[TTS] 合成完成，音訊大小：', ttsResult.buffer?.length);
-    console.log('[TTS] 耗時：', ttsResult.elapsed, 'ms');
+    // 3. TTS - 暫時關閉，先測試 STT 和字幕
+    // const ttsResult = await textToSpeech(translateResult.text, targetLang);
 
     const totalElapsed = Date.now() - startTime;
     console.log('[完成] 總耗時：', totalElapsed, 'ms');
@@ -164,30 +161,26 @@ async function handleAudioChunk(ws, audioBuffer) {
       latency: {
         stt: sttResult.elapsed,
         translate: translateResult.elapsed,
-        tts: ttsResult.elapsed,
         total: totalElapsed,
       },
     };
-    console.log('[WebSocket] 發送 my-speech 給說話者：', JSON.stringify(mySpeechData));
+    console.log('[WebSocket] 發送 my-speech 給說話者');
     ws.send(JSON.stringify(mySpeechData));
 
-    // 5. 發送給對方（語音 + 字幕）
+    // 5. 發送給對方（只有字幕，暫時關閉語音）
     if (socketIO && matchId) {
       const room = socketIO.sockets.adapter.rooms.get(`match:${matchId}`);
       const roomSize = room ? room.size : 0;
       console.log('[Socket] 房間 match:', matchId, '人數：', roomSize);
 
       if (roomSize > 0) {
-        const voiceData = {
+        socketIO.to(`match:${matchId}`).emit('voice:translation', {
           from: userId,
           originalText: sttResult.text,
           translatedText: translateResult.text,
-          audio: ttsResult.buffer.toString('base64'),
           latency: totalElapsed,
-        };
-        console.log('[Socket] 發送 voice:translation，audio 長度：', voiceData.audio.length);
-        socketIO.to(`match:${matchId}`).emit('voice:translation', voiceData);
-        console.log('[Socket] 已發送給對方');
+        });
+        console.log('[Socket] 已發送字幕給對方');
       } else {
         console.log('[Socket] 房間沒有人，無法發送');
       }
