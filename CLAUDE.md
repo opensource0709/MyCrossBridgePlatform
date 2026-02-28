@@ -153,9 +153,12 @@ AWS_SECRET_ACCESS_KEY=
 - [x] 媒體軌道正確清理（攝影機/麥克風釋放）
 - [x] 手機瀏覽器相容性（facingMode、多重配置回退）
 - [x] 雙向視訊測試通過（電腦 + 手機）
+- [x] 通話邀請/接聽 UI（WebSocket 信令）
+  - IncomingCall 元件：來電通知、30秒倒數、接聽/拒絕按鈕
+  - OutgoingCall 元件：撥打中畫面、取消按鈕
+  - WebSocket 事件：invite, accept, reject, cancel, timeout
 
 #### Phase 2-B — 即時語音翻譯（待開發）
-- [ ] 通話邀請/接聽 UI（WebSocket 信令）
 - [ ] 通話中即時語音翻譯整合
 
 #### Phase 1 待辦（未來）
