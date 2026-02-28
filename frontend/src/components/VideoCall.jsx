@@ -23,7 +23,7 @@ export default function VideoCall({ matchId, partnerId, partnerName, onClose }) 
   const remoteVideoRef = useRef(null);
 
   // 開始視訊通話
-  const startCall = async () => {
+  const startCall = async (withVideo = true) => {
     setIsConnecting(true);
     setError(null);
 
@@ -37,24 +37,45 @@ export default function VideoCall({ matchId, partnerId, partnerName, onClose }) 
       // 2. 加入頻道
       await client.join(appId, matchId, token, null);
 
-      // 3. 建立本地音訊和視訊軌道
-      const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
-      setLocalAudioTrack(audioTrack);
-      setLocalVideoTrack(videoTrack);
+      // 3. 建立本地軌道
+      const tracks = [];
 
-      // 4. 發布到頻道
-      await client.publish([audioTrack, videoTrack]);
+      // 嘗試取得麥克風
+      try {
+        const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        setLocalAudioTrack(audioTrack);
+        tracks.push(audioTrack);
+      } catch (audioErr) {
+        console.warn('[VideoCall] 無法取得麥克風:', audioErr);
+      }
 
-      // 5. 顯示本地視訊
-      if (localVideoRef.current) {
-        videoTrack.play(localVideoRef.current);
+      // 嘗試取得相機（如果選擇開啟視訊）
+      if (withVideo) {
+        try {
+          const videoTrack = await AgoraRTC.createCameraVideoTrack();
+          setLocalVideoTrack(videoTrack);
+          tracks.push(videoTrack);
+
+          // 顯示本地視訊
+          if (localVideoRef.current) {
+            videoTrack.play(localVideoRef.current);
+          }
+        } catch (videoErr) {
+          console.warn('[VideoCall] 無法取得相機:', videoErr);
+          setError('相機被其他程式使用中，僅使用語音');
+        }
+      }
+
+      // 4. 發布軌道到頻道
+      if (tracks.length > 0) {
+        await client.publish(tracks);
       }
 
       setIsConnected(true);
       console.log('[VideoCall] Connected to channel:', matchId);
     } catch (err) {
       console.error('[VideoCall] Failed to start call:', err);
-      setError(err.message || '無法開始視訊通話');
+      setError(err.message || '無法開始通話');
     } finally {
       setIsConnecting(false);
     }
@@ -180,13 +201,22 @@ export default function VideoCall({ matchId, partnerId, partnerName, onClose }) 
         {/* 控制按鈕 */}
         <div className="video-controls">
           {!isConnected ? (
-            <button
-              onClick={startCall}
-              className="control-btn start-btn"
-              disabled={isConnecting}
-            >
-              {isConnecting ? '連接中...' : '開始視訊'}
-            </button>
+            <>
+              <button
+                onClick={() => startCall(true)}
+                className="control-btn start-btn"
+                disabled={isConnecting}
+              >
+                {isConnecting ? '連接中...' : '📹 視訊通話'}
+              </button>
+              <button
+                onClick={() => startCall(false)}
+                className="control-btn start-btn audio-only"
+                disabled={isConnecting}
+              >
+                {isConnecting ? '連接中...' : '🎤 僅語音'}
+              </button>
+            </>
           ) : (
             <>
               <button

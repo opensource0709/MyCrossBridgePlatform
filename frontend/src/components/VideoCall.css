@@ -145,10 +145,14 @@
 
 .control-btn.start-btn {
   width: auto;
-  padding: 0 32px;
+  padding: 0 24px;
   border-radius: 28px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  font-size: 1rem;
+  font-size: 0.9rem;
+}
+
+.control-btn.start-btn.audio-only {
+  background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
 }
 
 .control-btn.end-btn {
