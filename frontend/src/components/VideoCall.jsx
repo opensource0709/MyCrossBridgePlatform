@@ -1,7 +1,7 @@
 // src/components/VideoCall.jsx
 // 視訊通話元件
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import AgoraRTC from 'agora-rtc-sdk-ng';
 import api from '../services/api';
 import './VideoCall.css';
@@ -10,8 +10,11 @@ import './VideoCall.css';
 AgoraRTC.setLogLevel(1); // 0: DEBUG, 1: INFO, 2: WARNING, 3: ERROR, 4: NONE
 
 export default function VideoCall({ matchId, partnerName, onClose }) {
-  // 在 ref 初始化時就創建 client，確保它在第一次渲染時就存在
-  const clientRef = useRef(AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' }));
+  // 使用 ref 來保存 tracks，確保 cleanup 時可以正確存取
+  const clientRef = useRef(null);
+  const localAudioTrackRef = useRef(null);
+  const localVideoTrackRef = useRef(null);
+
   const [localVideoTrack, setLocalVideoTrack] = useState(null);
   const [localAudioTrack, setLocalAudioTrack] = useState(null);
   const [remoteVideoTrack, setRemoteVideoTrack] = useState(null);
@@ -27,10 +30,12 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
 
-  // 設定 Agora client 事件監聽
+  // 初始化 Agora client
   useEffect(() => {
+    // 創建新的 client
+    console.log('[VideoCall] Creating new Agora client');
+    clientRef.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
     const client = clientRef.current;
-    if (!client) return;
 
     // 監聽遠端用戶發布
     client.on('user-published', async (user, mediaType) => {
@@ -106,6 +111,10 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
     setError(null);
     setStatus('正在連接...');
 
+    // 在 try 外部定義，讓 catch 可以存取
+    let audioTrack = null;
+    let videoTrack = null;
+
     try {
       // 檢查連線狀態，如果已連線則先離開
       console.log('[VideoCall] Current connection state:', client.connectionState);
@@ -159,12 +168,11 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
 
       // 3. 建立本地軌道
       setStatus('取得麥克風和相機...');
-      let audioTrack = null;
-      let videoTrack = null;
 
       // 嘗試取得麥克風
       try {
         audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        localAudioTrackRef.current = audioTrack;
         setLocalAudioTrack(audioTrack);
         console.log('[VideoCall] Got audio track');
       } catch (audioErr) {
@@ -175,6 +183,7 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
       if (withVideo) {
         try {
           videoTrack = await AgoraRTC.createCameraVideoTrack();
+          localVideoTrackRef.current = videoTrack;
           setLocalVideoTrack(videoTrack);
           console.log('[VideoCall] Got video track');
 
@@ -214,15 +223,17 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
       setError(err.message || '無法開始通話');
       setStatus('連接失敗');
 
-      // 清理
-      if (localAudioTrack) {
-        localAudioTrack.stop();
-        localAudioTrack.close();
+      // 清理 - 使用局部變數而非 state
+      if (audioTrack) {
+        audioTrack.stop();
+        audioTrack.close();
       }
-      if (localVideoTrack) {
-        localVideoTrack.stop();
-        localVideoTrack.close();
+      if (videoTrack) {
+        videoTrack.stop();
+        videoTrack.close();
       }
+      localAudioTrackRef.current = null;
+      localVideoTrackRef.current = null;
       setLocalAudioTrack(null);
       setLocalVideoTrack(null);
 
@@ -238,26 +249,38 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
     }
   };
 
-  // 結束通話
-  const endCall = async () => {
+  // 結束通話 - 使用 useCallback 確保穩定的引用
+  const endCall = useCallback(async () => {
     const client = clientRef.current;
     console.log('[VideoCall] Ending call...');
 
     try {
-      // 停止並關閉本地音訊軌道
-      if (localAudioTrack) {
+      // 停止並關閉本地音訊軌道 - 使用 ref 確保取得最新的 track
+      const audioTrack = localAudioTrackRef.current;
+      if (audioTrack) {
         console.log('[VideoCall] Stopping audio track');
-        localAudioTrack.stop();
-        localAudioTrack.close();
+        try {
+          audioTrack.stop();
+          audioTrack.close();
+        } catch (e) {
+          console.warn('[VideoCall] Error stopping audio track:', e);
+        }
       }
 
-      // 停止並關閉本地視訊軌道
-      if (localVideoTrack) {
+      // 停止並關閉本地視訊軌道 - 使用 ref 確保取得最新的 track
+      const videoTrack = localVideoTrackRef.current;
+      if (videoTrack) {
         console.log('[VideoCall] Stopping video track');
-        localVideoTrack.stop();
-        localVideoTrack.close();
+        try {
+          videoTrack.stop();
+          videoTrack.close();
+        } catch (e) {
+          console.warn('[VideoCall] Error stopping video track:', e);
+        }
       }
 
+      localAudioTrackRef.current = null;
+      localVideoTrackRef.current = null;
       setLocalAudioTrack(null);
       setLocalVideoTrack(null);
       setRemoteVideoTrack(null);
@@ -277,7 +300,7 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
       console.error('[VideoCall] Error ending call:', err);
       onClose?.();
     }
-  };
+  }, [onClose]);
 
   // 切換靜音
   const toggleMute = () => {
@@ -295,18 +318,34 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
     }
   };
 
-  // 元件卸載時清理
+  // 元件卸載時清理 - 使用 refs 確保正確清理
   useEffect(() => {
     return () => {
       console.log('[VideoCall] Component unmounting, cleaning up...');
-      if (localAudioTrack) {
-        localAudioTrack.stop();
-        localAudioTrack.close();
+
+      // 使用 refs 而非 state 來確保取得最新的 track
+      const audioTrack = localAudioTrackRef.current;
+      if (audioTrack) {
+        console.log('[VideoCall] Cleanup: stopping audio track');
+        try {
+          audioTrack.stop();
+          audioTrack.close();
+        } catch (e) {
+          console.warn('[VideoCall] Cleanup: error stopping audio:', e);
+        }
       }
-      if (localVideoTrack) {
-        localVideoTrack.stop();
-        localVideoTrack.close();
+
+      const videoTrack = localVideoTrackRef.current;
+      if (videoTrack) {
+        console.log('[VideoCall] Cleanup: stopping video track');
+        try {
+          videoTrack.stop();
+          videoTrack.close();
+        } catch (e) {
+          console.warn('[VideoCall] Cleanup: error stopping video:', e);
+        }
       }
+
       const client = clientRef.current;
       if (client && client.connectionState !== 'DISCONNECTED') {
         client.leave().catch((e) => {
@@ -314,7 +353,7 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
         });
       }
     };
-  }, [localAudioTrack, localVideoTrack]);
+  }, []); // 空依賴陣列，只在 unmount 時執行
 
   return (
     <div className="video-call-overlay">
@@ -405,7 +444,7 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
             </>
           )}
           <button
-            onClick={onClose}
+            onClick={endCall}
             className="control-btn close-btn"
             title="關閉"
           >
