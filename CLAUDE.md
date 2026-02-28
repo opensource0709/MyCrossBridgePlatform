@@ -94,7 +94,7 @@ AWS_SECRET_ACCESS_KEY=
 |------|------|------|------|
 | Phase 0 | 第 1～2 週 | 翻譯 Pipeline POC，本地跑通 | ✅ 完成 |
 | Phase 1 | 第 1～2 個月 | MVP 網頁版上線，文字翻譯＋基本配對 | ✅ 完成 |
-| Phase 2-A | - | Agora 視訊通話整合 | ✅ 完成 |
+| Phase 2-A | - | Agora 視訊通話 + 通話邀請UI | ✅ 完成 |
 | Phase 2-B | 第 3～5 個月 | 即時語音翻譯＋App | ⏳ 待開始 |
 | Phase 3 | 第 6～9 個月 | AI 記憶庫＋關係教練＋深度功能 | |
 | Phase 4 | 第 10～12 個月 | 成長優化、擴展、App 上架 | |
@@ -104,7 +104,7 @@ AWS_SECRET_ACCESS_KEY=
 ## 目前開發階段
 **Phase 2-B — 即時語音翻譯整合** ⏳ 待開始
 
-下一步：將語音翻譯 Pipeline 整合到視訊通話中
+Phase 2-A 已全部完成，下一步：將語音翻譯 Pipeline 整合到視訊通話中
 
 ---
 
