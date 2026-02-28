@@ -29,11 +29,11 @@ AI 驅動的跨語言視訊交流平台，專為台灣男性與越南女性打�
 | 即時翻譯 | GPT-4o-mini | 速度優先，品質仍佳 |
 | 語音合成 (TTS) | ElevenLabs API | 最接近真人聲音 |
 | 視訊通話 | Agora.io SDK | 台越延遲最低 |
-| 後端 | Node.js + Express | |
-| 資料庫 | PostgreSQL + Redis | |
-| 前端網頁 | React | Phase 1 |
+| 後端 | Node.js + Express | Railway |
+| 資料庫 | PostgreSQL (Neon) | 新加坡 |
+| 前端網頁 | React + Vite | Vercel |
 | 前端 App | React Native | Phase 2 |
-| 雲端 | AWS (EC2/RDS/S3/ElastiCache) | |
+| 雲端 | Vercel + Railway + Neon | |
 
 ---
 
@@ -100,8 +100,21 @@ AWS_SECRET_ACCESS_KEY=
 ---
 
 ## 目前開發階段
-**Phase 1-B — MVP 網頁版** 🔄 進行中
-詳細規格請見 `docs/phase1.md`
+**Phase 1 — MVP 網頁版** ✅ 已完成（2026-02-28）
+
+下一階段：Phase 2 — 視訊通話＋即時語音翻譯＋App
+
+---
+
+## 線上環境
+
+| 服務 | 網址 | 平台 |
+|------|------|------|
+| 前端 | https://my-cross-bridge-platform.vercel.app | Vercel |
+| 後端 | https://mycrossbridgeplatform-production.up.railway.app | Railway |
+| 資料庫 | Neon PostgreSQL（新加坡） | Neon |
+
+---
 
 ### 已完成項目
 
@@ -117,7 +130,7 @@ AWS_SECRET_ACCESS_KEY=
 - [x] TTS 改用 ElevenLabs Streaming API
 - [x] 延遲從 8.6s 優化至 4.8s（改善 44%）
 
-#### Phase 1-B — MVP 網頁版 🔄
+#### Phase 1-B — MVP 網頁版 ✅
 - [x] 後端架構（Express + PostgreSQL + WebSocket）
 - [x] 資料庫設計（users, profiles, matches, messages）
 - [x] JWT 身份驗證（註冊/登入/登出）
@@ -126,8 +139,10 @@ AWS_SECRET_ACCESS_KEY=
 - [x] 即時聊天（WebSocket + 輪詢備援）
 - [x] AI 翻譯整合（訊息自動翻譯）
 - [x] 個人資料頁（頭像上傳、年齡、自介、興趣標籤）
+- [x] 上線部署（Vercel + Railway + Neon）
+
+#### Phase 1 待辦（未來）
 - [ ] 付費訂閱整合
-- [ ] 上線部署
 
 ---
 
