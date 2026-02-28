@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import AgoraRTC from 'agora-rtc-sdk-ng';
+import { io } from 'socket.io-client';
 import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
 import './VideoCall.css';
@@ -11,6 +12,7 @@ import './VideoCall.css';
 AgoraRTC.setLogLevel(1); // 0: DEBUG, 1: INFO, 2: WARNING, 3: ERROR, 4: NONE
 
 const WS_URL = import.meta.env.VITE_API_URL?.replace('http', 'ws') || 'ws://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export default function VideoCall({ matchId, partnerName, onClose }) {
   const { user } = useAuth();
@@ -38,6 +40,15 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
   const [partnerSubtitle, setPartnerSubtitle] = useState('');
   const [latency, setLatency] = useState(0);
 
+  // Debug: 監聽字幕 state 變化
+  useEffect(() => {
+    console.log('[DEBUG] mySubtitle 變化:', mySubtitle);
+  }, [mySubtitle]);
+
+  useEffect(() => {
+    console.log('[DEBUG] partnerSubtitle 變化:', partnerSubtitle);
+  }, [partnerSubtitle]);
+
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const startCallRef = useRef(null);
@@ -46,6 +57,7 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
   const voiceWsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioContextRef = useRef(null);
+  const socketRef = useRef(null);  // Socket.IO for receiving translations
 
   // 初始化 Agora client
   useEffect(() => {
@@ -412,20 +424,29 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
 
   // 播放翻譯後的語音
   const playTranslatedAudio = useCallback(async (base64Audio) => {
+    console.log('[DEBUG] playTranslatedAudio 被呼叫');
+    console.log('[DEBUG] base64Audio 長度:', base64Audio?.length);
     try {
       if (!audioContextRef.current) {
+        console.log('[DEBUG] 建立新的 AudioContext');
         audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
       }
 
+      console.log('[DEBUG] 解碼 base64...');
       const audioData = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
+      console.log('[DEBUG] audioData 長度:', audioData.length);
+
+      console.log('[DEBUG] decodeAudioData...');
       const audioBuffer = await audioContextRef.current.decodeAudioData(audioData.buffer);
+      console.log('[DEBUG] audioBuffer 時長:', audioBuffer.duration, '秒');
 
       const source = audioContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(audioContextRef.current.destination);
       source.start(0);
+      console.log('[DEBUG] 音訊播放開始!');
     } catch (err) {
-      console.error('[VideoCall] 播放翻譯語音失敗:', err);
+      console.error('[DEBUG] 播放翻譯語音失敗:', err);
     }
   }, []);
 
@@ -436,77 +457,172 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
     const token = localStorage.getItem('token');
     const direction = user?.role === 'taiwan' ? 'zh-to-vi' : 'vi-to-zh';
 
-    console.log('[VideoCall] Starting translation, direction:', direction);
+    console.log('========== [DEBUG] 開始語音翻譯 ==========');
+    console.log('[DEBUG] user:', user);
+    console.log('[DEBUG] user.id:', user?.id);
+    console.log('[DEBUG] user.role:', user?.role);
+    console.log('[DEBUG] direction:', direction);
+    console.log('[DEBUG] matchId:', matchId);
+    console.log('[DEBUG] API_URL:', API_URL);
+    console.log('[DEBUG] WS_URL:', WS_URL);
 
-    // 連接語音翻譯 WebSocket
-    const wsUrl = `${WS_URL}/ws/voice?token=${token}&direction=${direction}`;
+    // 1. 連接 Socket.IO 來接收對方的翻譯
+    console.log('[DEBUG] 步驟1: 連接 Socket.IO...');
+    socketRef.current = io(API_URL);
+
+    socketRef.current.on('connect', () => {
+      console.log('[DEBUG] Socket.IO 連線成功! socket.id:', socketRef.current.id);
+      // 加入 match room 以接收對方的翻譯
+      console.log('[DEBUG] 發送 chat:join, matchId:', matchId);
+      socketRef.current.emit('chat:join', matchId);
+    });
+
+    socketRef.current.on('connect_error', (err) => {
+      console.error('[DEBUG] Socket.IO 連線錯誤:', err);
+    });
+
+    // 接收對方的翻譯（播放語音 + 顯示字幕）
+    socketRef.current.on('voice:translation', (data) => {
+      console.log('========== [DEBUG] 收到 voice:translation ==========');
+      console.log('[DEBUG] data:', data);
+      console.log('[DEBUG] data.from:', data.from);
+      console.log('[DEBUG] user.id:', user?.id);
+      console.log('[DEBUG] data.from === user.id?', data.from === user?.id);
+
+      // 忽略自己發出的翻譯
+      if (data.from === user?.id) {
+        console.log('[DEBUG] 這是自己發的翻譯，忽略');
+        return;
+      }
+
+      console.log('[DEBUG] 這是對方的翻譯，準備顯示字幕和播放音訊');
+      console.log('[DEBUG] originalText:', data.originalText);
+      console.log('[DEBUG] translatedText:', data.translatedText);
+      console.log('[DEBUG] audio 長度:', data.audio?.length);
+
+      // 顯示對方說的話（翻譯後的版本）
+      setPartnerSubtitle(data.translatedText);
+      setLatency(data.latency || 0);
+
+      // 播放翻譯後的語音（這是對方說的話，翻譯成我的語言）
+      if (data.audio) {
+        console.log('[DEBUG] 播放翻譯語音...');
+        playTranslatedAudio(data.audio);
+      }
+
+      // 5 秒後清除字幕
+      setTimeout(() => {
+        setPartnerSubtitle('');
+      }, 5000);
+    });
+
+    // 2. 連接語音翻譯 WebSocket（發送自己的語音）
+    const wsUrl = `${WS_URL}/ws/voice?token=${token}&direction=${direction}&matchId=${matchId}`;
+    console.log('[DEBUG] 步驟2: 連接 Voice WebSocket...');
+    console.log('[DEBUG] wsUrl:', wsUrl);
     voiceWsRef.current = new WebSocket(wsUrl);
 
     voiceWsRef.current.onopen = () => {
-      console.log('[VideoCall] Voice WebSocket connected');
+      console.log('[DEBUG] Voice WebSocket 連線成功!');
       setStatus('翻譯已開啟');
     };
 
     voiceWsRef.current.onmessage = (event) => {
+      console.log('[DEBUG] Voice WebSocket 收到訊息:', event.data);
       try {
         const data = JSON.parse(event.data);
+        console.log('[DEBUG] 解析後的資料:', data);
+        console.log('[DEBUG] data.type:', data.type);
 
-        if (data.type === 'translation') {
-          console.log('[VideoCall] Translation received:', data.originalText, '→', data.translatedText);
+        // 只處理自己說的話（顯示字幕，不播放音訊）
+        if (data.type === 'my-speech') {
+          console.log('[DEBUG] ===== 收到 my-speech =====');
+          console.log('[DEBUG] originalText:', data.originalText);
+          console.log('[DEBUG] 準備呼叫 setMySubtitle...');
 
-          // 更新字幕
+          // 顯示我說的話
           setMySubtitle(data.originalText);
-          setPartnerSubtitle(data.translatedText);
-          setLatency(data.latency?.total || 0);
+          console.log('[DEBUG] setMySubtitle 已呼叫，值:', data.originalText);
 
-          // 播放翻譯後的語音
-          if (data.audio) {
-            playTranslatedAudio(data.audio);
-          }
+          setLatency(data.latency?.total || 0);
 
           // 5 秒後清除字幕
           setTimeout(() => {
+            console.log('[DEBUG] 5秒到，清除 mySubtitle');
             setMySubtitle('');
-            setPartnerSubtitle('');
           }, 5000);
+        } else if (data.type === 'connected') {
+          console.log('[DEBUG] Voice WS 連線確認:', data.message);
         } else if (data.type === 'error') {
-          console.error('[VideoCall] Translation error:', data.message);
+          console.error('[DEBUG] 翻譯錯誤:', data.message);
+        } else {
+          console.log('[DEBUG] 未知的訊息類型:', data.type);
         }
       } catch (err) {
-        console.error('[VideoCall] Failed to parse WebSocket message:', err);
+        console.error('[DEBUG] 解析 WebSocket 訊息失敗:', err);
       }
     };
 
     voiceWsRef.current.onerror = (err) => {
-      console.error('[VideoCall] Voice WebSocket error:', err);
+      console.error('[DEBUG] Voice WebSocket 錯誤:', err);
     };
 
-    voiceWsRef.current.onclose = () => {
-      console.log('[VideoCall] Voice WebSocket closed');
+    voiceWsRef.current.onclose = (event) => {
+      console.log('[DEBUG] Voice WebSocket 關閉, code:', event.code, 'reason:', event.reason);
     };
 
-    // 開始錄音
+    // 3. 開始錄音
+    console.log('[DEBUG] 步驟3: 開始錄音...');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus',
-      });
+      console.log('[DEBUG] 取得麥克風成功');
 
+      // 診斷：檢查瀏覽器支援的 mimeType
+      console.log('[DEBUG] ===== MediaRecorder mimeType 診斷 =====');
+      console.log('[DEBUG] audio/webm;codecs=opus 支援:', MediaRecorder.isTypeSupported('audio/webm;codecs=opus'));
+      console.log('[DEBUG] audio/webm 支援:', MediaRecorder.isTypeSupported('audio/webm'));
+      console.log('[DEBUG] audio/ogg;codecs=opus 支援:', MediaRecorder.isTypeSupported('audio/ogg;codecs=opus'));
+      console.log('[DEBUG] audio/mp4 支援:', MediaRecorder.isTypeSupported('audio/mp4'));
+      console.log('[DEBUG] audio/wav 支援:', MediaRecorder.isTypeSupported('audio/wav'));
+
+      // 選擇支援的 mimeType
+      let selectedMimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported(selectedMimeType)) {
+        if (MediaRecorder.isTypeSupported('audio/webm')) {
+          selectedMimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+          selectedMimeType = 'audio/ogg;codecs=opus';
+        } else {
+          selectedMimeType = ''; // 使用瀏覽器預設
+        }
+      }
+      console.log('[DEBUG] 選擇的 mimeType:', selectedMimeType);
+
+      const recorderOptions = selectedMimeType ? { mimeType: selectedMimeType } : {};
+      mediaRecorderRef.current = new MediaRecorder(stream, recorderOptions);
+      console.log('[DEBUG] 實際使用的 mimeType:', mediaRecorderRef.current.mimeType);
+
+      let chunkCount = 0;
       mediaRecorderRef.current.ondataavailable = (event) => {
+        chunkCount++;
+        console.log(`[DEBUG] 錄音片段 #${chunkCount}, 大小: ${event.data.size} bytes`);
         if (event.data.size > 0 && voiceWsRef.current?.readyState === WebSocket.OPEN) {
+          console.log('[DEBUG] 發送音訊到 WebSocket...');
           voiceWsRef.current.send(event.data);
+        } else {
+          console.log('[DEBUG] 無法發送: size=', event.data.size, 'wsState=', voiceWsRef.current?.readyState);
         }
       };
 
       // 每 2 秒傳一次音訊片段
       mediaRecorderRef.current.start(2000);
       setIsTranslating(true);
-      console.log('[VideoCall] Recording started, sending every 2 seconds');
+      console.log('[DEBUG] 錄音開始，每 2 秒發送一次');
     } catch (err) {
-      console.error('[VideoCall] Failed to start recording:', err);
+      console.error('[DEBUG] 錄音啟動失敗:', err);
       setError('無法啟用麥克風錄音');
     }
-  }, [isTranslating, user?.role, playTranslatedAudio]);
+  }, [isTranslating, user?.role, user?.id, matchId, playTranslatedAudio]);
 
   // 停止語音翻譯
   const stopTranslation = useCallback(() => {
@@ -521,6 +637,12 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
     if (voiceWsRef.current) {
       voiceWsRef.current.close();
       voiceWsRef.current = null;
+    }
+
+    // 關閉 Socket.IO 連接
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
     }
 
     setIsTranslating(false);
@@ -541,6 +663,9 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
       }
       if (voiceWsRef.current) {
         voiceWsRef.current.close();
+      }
+      if (socketRef.current) {
+        socketRef.current.disconnect();
       }
       if (audioContextRef.current) {
         audioContextRef.current.close();
@@ -594,10 +719,10 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
           </div>
           {remoteVideoTrack && <div className="partner-name">{partnerName}</div>}
 
-          {/* 對方的翻譯字幕（顯示我說的話翻譯後的版本） */}
+          {/* 對方說的話（翻譯成我的語言） */}
           {partnerSubtitle && (
             <div className="subtitle partner-subtitle">
-              <span className="subtitle-label">翻譯:</span> {partnerSubtitle}
+              <span className="subtitle-label">{partnerName}:</span> {partnerSubtitle}
             </div>
           )}
         </div>
@@ -626,6 +751,49 @@ export default function VideoCall({ matchId, partnerName, onClose }) {
             AI 翻譯延遲: {(latency / 1000).toFixed(1)}s
           </div>
         )}
+
+        {/* DEBUG: 測試字幕按鈕 */}
+        <button
+          onClick={() => {
+            console.log('[DEBUG] 測試字幕按鈕被點擊');
+            setMySubtitle('測試：我說的話');
+            setPartnerSubtitle('Test: Partner speech');
+            setTimeout(() => {
+              setMySubtitle('');
+              setPartnerSubtitle('');
+            }, 3000);
+          }}
+          style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            zIndex: 9999,
+            padding: '10px',
+            background: 'red',
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+          }}
+        >
+          測試字幕
+        </button>
+
+        {/* DEBUG: 顯示當前字幕狀態 */}
+        <div style={{
+          position: 'absolute',
+          top: '50px',
+          right: '10px',
+          zIndex: 9999,
+          padding: '10px',
+          background: 'rgba(0,0,0,0.8)',
+          color: 'lime',
+          fontSize: '12px',
+          maxWidth: '200px',
+        }}>
+          mySubtitle: "{mySubtitle}"<br/>
+          partnerSubtitle: "{partnerSubtitle}"
+        </div>
 
         {/* 狀態訊息 */}
         {status && (

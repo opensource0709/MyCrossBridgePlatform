@@ -1,5 +1,6 @@
 // src/api/websocket/voiceTranslation.js
 // 語音翻譯 WebSocket 處理器
+// 修正版：翻譯後的語音發送給對方，不是自己
 
 import { WebSocketServer } from 'ws';
 import { speechToTextFromBuffer } from '../../pipeline/stt.js';
@@ -7,6 +8,17 @@ import { translate } from '../../pipeline/translate.js';
 import { textToSpeech } from '../../pipeline/tts.js';
 import jwt from 'jsonwebtoken';
 import { parse } from 'url';
+
+// 儲存 Socket.IO 實例的引用
+let socketIO = null;
+
+/**
+ * 設定 Socket.IO 實例
+ */
+export function setSocketIO(io) {
+  socketIO = io;
+  console.log('[VoiceWS] Socket.IO 實例已設定:', socketIO ? '成功' : '失敗');
+}
 
 /**
  * 初始化語音翻譯 WebSocket
@@ -32,6 +44,7 @@ export function initVoiceTranslation(server) {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         request.userId = decoded.id;
         request.userRole = decoded.role;
+        request.matchId = query.matchId;
         request.direction = query.direction || (decoded.role === 'taiwan' ? 'zh-to-vi' : 'vi-to-zh');
 
         wss.handleUpgrade(request, socket, head, (ws) => {
@@ -46,8 +59,14 @@ export function initVoiceTranslation(server) {
   });
 
   wss.on('connection', (ws, request) => {
-    const { userId, userRole, direction } = request;
-    console.log(`[VoiceWS] 用戶連接: ${userId}, 角色: ${userRole}, 方向: ${direction}`);
+    const { userId, userRole, direction, matchId } = request;
+    console.log(`[VoiceWS] 用戶連接: ${userId}, 角色: ${userRole}, 方向: ${direction}, matchId: ${matchId}`);
+
+    // 儲存連接資訊
+    ws.userId = userId;
+    ws.userRole = userRole;
+    ws.direction = direction;
+    ws.matchId = matchId;
 
     // 發送連接成功訊息
     ws.send(JSON.stringify({
@@ -60,7 +79,7 @@ export function initVoiceTranslation(server) {
       try {
         // 檢查是否為二進位資料（音訊）
         if (Buffer.isBuffer(data)) {
-          await handleAudioChunk(ws, data, direction);
+          await handleAudioChunk(ws, data);
         } else {
           // JSON 訊息
           const message = JSON.parse(data.toString());
@@ -93,25 +112,24 @@ export function initVoiceTranslation(server) {
 /**
  * 處理音訊片段
  */
-async function handleAudioChunk(ws, audioBuffer, direction) {
+async function handleAudioChunk(ws, audioBuffer) {
   const startTime = Date.now();
+  const { userId, direction, matchId } = ws;
 
   // 確定語言
   const [sourceLang, targetLang] = direction.split('-to-');
-  console.log(`[VoiceWS] 處理音訊: ${audioBuffer.length} bytes, ${sourceLang} → ${targetLang}`);
+  console.log(`[VoiceWS] 收到音訊: ${audioBuffer.length} bytes, ${sourceLang} → ${targetLang}`);
 
   // 音訊太小可能是靜音，跳過
   if (audioBuffer.length < 1000) {
-    console.log('[VoiceWS] 音訊太小，跳過');
     return;
   }
 
   try {
-    // 1. STT - 語音辨識
+    // 1. STT - 語音辨識（直接用 webm 格式）
     const sttResult = await speechToTextFromBuffer(audioBuffer, sourceLang);
 
     if (!sttResult.text || sttResult.text.trim() === '') {
-      console.log('[VoiceWS] 無辨識結果，跳過');
       return;
     }
 
@@ -122,14 +140,13 @@ async function handleAudioChunk(ws, audioBuffer, direction) {
     const ttsResult = await textToSpeech(translateResult.text, targetLang);
 
     const totalElapsed = Date.now() - startTime;
-    console.log(`[VoiceWS] 完成翻譯: ${sttResult.text} → ${translateResult.text} (${totalElapsed}ms)`);
+    console.log(`[VoiceWS] 翻譯完成: "${sttResult.text}" → "${translateResult.text}" (${totalElapsed}ms)`);
 
-    // 4. 回傳結果
+    // 4. 發送結果給說話者（字幕）
     ws.send(JSON.stringify({
-      type: 'translation',
+      type: 'my-speech',
       originalText: sttResult.text,
       translatedText: translateResult.text,
-      audio: ttsResult.buffer.toString('base64'),
       latency: {
         stt: sttResult.elapsed,
         translate: translateResult.elapsed,
@@ -138,8 +155,24 @@ async function handleAudioChunk(ws, audioBuffer, direction) {
       },
     }));
 
+    // 5. 發送給對方（語音 + 字幕）
+    if (socketIO && matchId) {
+      const room = socketIO.sockets.adapter.rooms.get(`match:${matchId}`);
+      console.log(`[VoiceWS] 發送到 match:${matchId}, 房間人數: ${room ? room.size : 0}`);
+
+      socketIO.to(`match:${matchId}`).emit('voice:translation', {
+        from: userId,
+        originalText: sttResult.text,
+        translatedText: translateResult.text,
+        audio: ttsResult.buffer.toString('base64'),
+        latency: totalElapsed,
+      });
+    } else {
+      console.warn('[VoiceWS] 無法發送: socketIO=', !!socketIO, 'matchId=', matchId);
+    }
+
   } catch (error) {
-    console.error('[VoiceWS] 翻譯錯誤:', error);
+    console.error('[VoiceWS] 翻譯錯誤:', error.message);
     ws.send(JSON.stringify({
       type: 'error',
       message: '翻譯失敗: ' + (error.message || '未知錯誤'),

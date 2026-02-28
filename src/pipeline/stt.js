@@ -102,22 +102,33 @@ async function speechToTextWhisper(audioFilePath, language) {
  */
 async function speechToTextDeepgramBuffer(audioBuffer, language) {
   const start = Date.now();
+  console.log('[STT-Deepgram] 收到音訊，大小:', audioBuffer?.length, '語言:', language);
 
-  const { result } = await getDeepgram().listen.prerecorded.transcribeFile(
-    audioBuffer,
-    {
-      model: 'nova-2',
-      language: DEEPGRAM_LANGUAGE_MAP[language],
-      smart_format: true,
-      mimetype: 'audio/webm',
+  try {
+    const { result } = await getDeepgram().listen.prerecorded.transcribeFile(
+      audioBuffer,
+      {
+        model: 'nova-2',
+        language: DEEPGRAM_LANGUAGE_MAP[language],
+        smart_format: true,
+        mimetype: 'audio/webm',  // 直接用 webm 格式
+      }
+    );
+
+    if (!result || !result.results) {
+      console.log('[STT-Deepgram] 無辨識結果');
+      return { text: '', elapsed: Date.now() - start, engine: 'deepgram' };
     }
-  );
 
-  const text = result.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
-  const elapsed = Date.now() - start;
-  console.log(`[STT-Deepgram-Buffer] 耗時: ${elapsed}ms | 結果: ${text}`);
+    const text = result.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
+    const elapsed = Date.now() - start;
+    console.log(`[STT-Deepgram] 耗時: ${elapsed}ms | 結果: ${text}`);
 
-  return { text, elapsed, engine: 'deepgram' };
+    return { text, elapsed, engine: 'deepgram' };
+  } catch (err) {
+    console.error('[STT-Deepgram] 錯誤:', err.message);
+    return { text: '', elapsed: Date.now() - start, engine: 'deepgram', error: err.message };
+  }
 }
 
 /**
@@ -125,18 +136,24 @@ async function speechToTextDeepgramBuffer(audioBuffer, language) {
  */
 async function speechToTextWhisperBuffer(audioBuffer, language) {
   const start = Date.now();
+  console.log('[STT-Whisper] 收到音訊，大小:', audioBuffer?.length, '語言:', language);
 
-  // Whisper 需要檔案，所以創建一個 File-like 物件
-  const file = new File([audioBuffer], 'audio.webm', { type: 'audio/webm' });
+  try {
+    // Whisper 支援 webm 格式，直接使用
+    const file = new File([audioBuffer], 'audio.webm', { type: 'audio/webm' });
 
-  const transcription = await getOpenAI().audio.transcriptions.create({
-    file: file,
-    model: 'whisper-1',
-    language: language,
-  });
+    const transcription = await getOpenAI().audio.transcriptions.create({
+      file: file,
+      model: 'whisper-1',
+      language: language,
+    });
 
-  const elapsed = Date.now() - start;
-  console.log(`[STT-Whisper-Buffer] 耗時: ${elapsed}ms | 結果: ${transcription.text}`);
+    const elapsed = Date.now() - start;
+    console.log(`[STT-Whisper] 耗時: ${elapsed}ms | 結果: ${transcription.text}`);
 
-  return { text: transcription.text, elapsed, engine: 'whisper' };
+    return { text: transcription.text, elapsed, engine: 'whisper' };
+  } catch (err) {
+    console.error('[STT-Whisper] 錯誤:', err.message);
+    return { text: '', elapsed: Date.now() - start, engine: 'whisper', error: err.message };
+  }
 }

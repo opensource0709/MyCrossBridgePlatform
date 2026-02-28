@@ -26,7 +26,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { rateLimiter } from './middleware/rateLimit.js';
 
 // WebSocket
-import { initVoiceTranslation } from './websocket/voiceTranslation.js';
+import { initVoiceTranslation, setSocketIO } from './websocket/voiceTranslation.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -38,6 +38,9 @@ const io = new Server(httpServer, {
     methods: ['GET', 'POST'],
   },
 });
+
+// 設定語音翻譯模組的 Socket.IO 引用
+setSocketIO(io);
 
 // 基本 Middleware
 app.use(helmet());

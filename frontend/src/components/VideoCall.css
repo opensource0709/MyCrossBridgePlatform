@@ -208,6 +208,7 @@
   max-width: 80%;
   text-align: center;
   animation: fadeIn 0.3s ease;
+  z-index: 100;  /* 確保字幕顯示在最上層 */
 }
 
 .subtitle-label {
