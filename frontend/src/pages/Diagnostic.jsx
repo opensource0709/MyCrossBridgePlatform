@@ -48,6 +48,9 @@ export default function Diagnostic() {
   const [calibrationData, setCalibrationData] = useState(null); // 校準結果
   const [calibrationMessage, setCalibrationMessage] = useState('');
   const [savedCalibration, setSavedCalibration] = useState(null); // 已儲存的校準資料
+  const [isVerificationTesting, setIsVerificationTesting] = useState(false); // 驗證測試進行中
+  const [verificationSpeaking, setVerificationSpeaking] = useState(false); // 驗證時的說話狀態
+  const [verificationVolume, setVerificationVolume] = useState(0); // 驗證時的即時音量
 
   // Refs
   const videoRef = useRef(null);
@@ -63,6 +66,9 @@ export default function Diagnostic() {
   const calibrationSamplesRef = useRef([]); // 校準時收集的音量樣本
   const calibrationIntervalRef = useRef(null);
   const currentVolumeRef = useRef(0); // 即時音量 ref（供校準使用）
+  const volumeHistoryRef = useRef([]); // 驗證時的音量歷史（最近 10 秒）
+  const verificationCanvasRef = useRef(null); // 驗證曲線圖 canvas
+  const verificationAnimationRef = useRef(null); // 驗證動畫 frame
 
   // 載入已儲存的校準資料
   useEffect(() => {
@@ -772,10 +778,166 @@ export default function Diagnostic() {
     if (calibrationIntervalRef.current) {
       clearInterval(calibrationIntervalRef.current);
     }
+    stopVerificationTest();
     setCalibrationStep(0);
     setCalibrationProgress(0);
     setCalibrationData(null);
     setCalibrationMessage('');
+  };
+
+  // 開始驗證測試
+  const startVerificationTest = () => {
+    volumeHistoryRef.current = [];
+    verificationSpeakingRef.current = false;
+    setIsVerificationTesting(true);
+    console.log('[驗證] 開始測試');
+
+    // 開始繪製曲線圖
+    const drawVerificationChart = () => {
+      const canvas = verificationCanvasRef.current;
+      if (!canvas || !isVerificationTesting) return;
+
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+      const padding = { top: 20, right: 60, bottom: 30, left: 50 };
+      const chartWidth = width - padding.left - padding.right;
+      const chartHeight = height - padding.top - padding.bottom;
+
+      // 取得即時音量並加入歷史
+      const volume = currentVolumeRef.current;
+      const now = Date.now();
+      volumeHistoryRef.current.push({ time: now, volume, speaking: verificationSpeakingRef.current });
+
+      // 只保留最近 10 秒的數據
+      const tenSecondsAgo = now - 10000;
+      volumeHistoryRef.current = volumeHistoryRef.current.filter(d => d.time > tenSecondsAgo);
+
+      // 清除畫布
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+      ctx.fillRect(0, 0, width, height);
+
+      // 計算 Y 軸範圍（0 到 max(100, 最大音量*1.2)）
+      const maxVolume = Math.max(100, ...volumeHistoryRef.current.map(d => d.volume)) * 1.2;
+
+      // 繪製 Y 軸刻度
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'right';
+
+      const yTicks = 5;
+      for (let i = 0; i <= yTicks; i++) {
+        const value = Math.round((maxVolume / yTicks) * i);
+        const y = padding.top + chartHeight - (i / yTicks) * chartHeight;
+
+        // 水平格線
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(padding.left + chartWidth, y);
+        ctx.stroke();
+
+        // 刻度數值
+        ctx.fillText(value.toString(), padding.left - 8, y + 4);
+      }
+
+      // 繪製 X 軸標籤
+      ctx.textAlign = 'center';
+      ctx.fillText('10秒前', padding.left, height - 8);
+      ctx.fillText('現在', padding.left + chartWidth, height - 8);
+
+      // 繪製閾值紅線
+      const threshold = calibrationData?.vadStartThreshold || 30;
+      const thresholdY = padding.top + chartHeight - (threshold / maxVolume) * chartHeight;
+
+      ctx.strokeStyle = '#F44336';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(padding.left, thresholdY);
+      ctx.lineTo(padding.left + chartWidth, thresholdY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 閾值標籤
+      ctx.fillStyle = '#F44336';
+      ctx.textAlign = 'left';
+      ctx.fillText(`閾值: ${threshold}`, padding.left + chartWidth + 5, thresholdY + 4);
+
+      // 繪製音量曲線
+      if (volumeHistoryRef.current.length > 1) {
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        let lastSpeaking = null;
+        volumeHistoryRef.current.forEach((point, index) => {
+          const x = padding.left + ((point.time - tenSecondsAgo) / 10000) * chartWidth;
+          const y = padding.top + chartHeight - (point.volume / maxVolume) * chartHeight;
+
+          // 根據說話狀態切換顏色
+          if (lastSpeaking !== point.speaking) {
+            if (index > 0) {
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo(x, y);
+            }
+            ctx.strokeStyle = point.speaking ? '#4CAF50' : 'rgba(255, 255, 255, 0.4)';
+            lastSpeaking = point.speaking;
+          }
+
+          if (index === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        });
+        ctx.stroke();
+
+        // 繪製目前點
+        const lastPoint = volumeHistoryRef.current[volumeHistoryRef.current.length - 1];
+        const lastX = padding.left + chartWidth;
+        const lastY = padding.top + chartHeight - (lastPoint.volume / maxVolume) * chartHeight;
+
+        ctx.beginPath();
+        ctx.arc(lastX, lastY, 5, 0, Math.PI * 2);
+        ctx.fillStyle = lastPoint.speaking ? '#4CAF50' : 'rgba(255, 255, 255, 0.6)';
+        ctx.fill();
+      }
+
+      // 更新說話狀態
+      const startThreshold = calibrationData?.vadStartThreshold || 30;
+      const endThreshold = calibrationData?.vadEndThreshold || 20;
+
+      const wasSpeaking = verificationSpeakingRef.current;
+
+      if (!verificationSpeakingRef.current && volume > startThreshold) {
+        verificationSpeakingRef.current = true;
+      } else if (verificationSpeakingRef.current && volume < endThreshold) {
+        verificationSpeakingRef.current = false;
+      }
+
+      // 更新 state 觸發 UI 更新
+      setVerificationVolume(Math.round(volume));
+      if (wasSpeaking !== verificationSpeakingRef.current) {
+        setVerificationSpeaking(verificationSpeakingRef.current);
+        // 狀態變化時印出 log
+        console.log(`[驗證] 音量: ${volume.toFixed(1)}, 閾值: ${startThreshold}, 狀態: ${verificationSpeakingRef.current ? '說話中' : '靜音'}`);
+      }
+
+      verificationAnimationRef.current = requestAnimationFrame(drawVerificationChart);
+    };
+
+    drawVerificationChart();
+  };
+
+  // 停止驗證測試
+  const stopVerificationTest = () => {
+    setIsVerificationTesting(false);
+    if (verificationAnimationRef.current) {
+      cancelAnimationFrame(verificationAnimationRef.current);
+      verificationAnimationRef.current = null;
+    }
+    console.log('[驗證] 停止測試');
   };
 
   // 驗證階段的說話狀態（用 ref 追蹤以實現遲滯效果）
@@ -1028,45 +1190,89 @@ export default function Diagnostic() {
                 </div>
               )}
 
-              {/* 驗證階段的即時指示器 */}
+              {/* 驗證階段 */}
               {calibrationStep === 3 && (
-                <div className="verification-indicator">
-                  <div className={`speaking-light ${verificationStatus.speaking ? 'on' : 'off'}`}>
-                    {verificationStatus.speaking ? '說話中' : '靜音'}
+                <div className="verification-section">
+                  {/* 校準結果預覽 */}
+                  <div className="calibration-result-preview">
+                    <h4>校準結果</h4>
+                    <div className="calibration-params">
+                      <div className="param-item">
+                        <span className="param-label">靜音平均</span>
+                        <span className="param-value">{calibrationData?.silenceAvg}</span>
+                      </div>
+                      <div className="param-item">
+                        <span className="param-label">說話平均</span>
+                        <span className="param-value">{calibrationData?.speechAvg}</span>
+                      </div>
+                      <div className="param-item">
+                        <span className="param-label">VAD 起點</span>
+                        <span className="param-value highlight">{calibrationData?.vadStartThreshold}</span>
+                      </div>
+                      <div className="param-item">
+                        <span className="param-label">VAD 終點</span>
+                        <span className="param-value">{calibrationData?.vadEndThreshold}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="current-volume">
-                    目前音量: {Math.round(verificationStatus.volume)}
-                    {calibrationData && (
-                      <span className="threshold-hint">
-                        （起點: {calibrationData.vadStartThreshold} / 終點: {calibrationData.vadEndThreshold}）
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
 
-              {/* 校準結果預覽 */}
-              {calibrationStep === 3 && calibrationData && (
-                <div className="calibration-result-preview">
-                  <h4>校準結果</h4>
-                  <div className="calibration-params">
-                    <div className="param-item">
-                      <span className="param-label">靜音平均</span>
-                      <span className="param-value">{calibrationData.silenceAvg}</span>
+                  {/* 測試按鈕 */}
+                  {!isVerificationTesting ? (
+                    <button
+                      className="calibration-btn test-btn"
+                      onClick={startVerificationTest}
+                    >
+                      開始測試
+                    </button>
+                  ) : (
+                    <button
+                      className="calibration-btn test-btn active"
+                      onClick={stopVerificationTest}
+                    >
+                      停止測試
+                    </button>
+                  )}
+
+                  {/* 驗證測試區域 */}
+                  {isVerificationTesting && (
+                    <div className="verification-test-area">
+                      {/* 即時指示燈 */}
+                      <div className="verification-indicator">
+                        <div className={`speaking-light ${verificationSpeaking ? 'on' : 'off'}`}>
+                          {verificationSpeaking ? '說話中' : '靜音'}
+                        </div>
+                        <div className="current-volume">
+                          目前音量: {verificationVolume}
+                        </div>
+                      </div>
+
+                      {/* 即時音量曲線圖 */}
+                      <div className="verification-chart-container">
+                        <div className="chart-title">即時音量曲線（最近 10 秒）</div>
+                        <canvas
+                          ref={verificationCanvasRef}
+                          width={700}
+                          height={200}
+                          className="verification-chart"
+                        />
+                        <div className="chart-legend">
+                          <span className="legend-item speaking">
+                            <span className="legend-color"></span>說話中
+                          </span>
+                          <span className="legend-item silent">
+                            <span className="legend-color"></span>靜音
+                          </span>
+                          <span className="legend-item threshold">
+                            <span className="legend-line"></span>閾值
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="verification-hint">
+                        說話時綠線應該超過紅色閾值線，燈號變成「說話中」
+                      </p>
                     </div>
-                    <div className="param-item">
-                      <span className="param-label">說話平均</span>
-                      <span className="param-value">{calibrationData.speechAvg}</span>
-                    </div>
-                    <div className="param-item">
-                      <span className="param-label">說話閾值</span>
-                      <span className="param-value highlight">{calibrationData.speakingThreshold}</span>
-                    </div>
-                    <div className="param-item">
-                      <span className="param-label">VAD 起點</span>
-                      <span className="param-value">{calibrationData.vadStartThreshold}</span>
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
 
