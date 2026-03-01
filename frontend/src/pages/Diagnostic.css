@@ -634,7 +634,209 @@
   padding: 0 4px;
 }
 
-/* 校準區塊 */
+/* 校準區塊（新版簡化設計） */
+.calibration-section-v2 h2 {
+  color: #9C27B0;
+}
+
+/* 即時音量大數字顯示 */
+.realtime-volume-display {
+  text-align: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+.volume-number {
+  font-size: 4rem;
+  font-weight: bold;
+  font-family: 'Consolas', 'Monaco', monospace;
+  color: #4CAF50;
+  line-height: 1;
+}
+
+.volume-label-big {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 8px;
+}
+
+/* 三個輸入框 */
+.calibration-inputs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+
+.input-group label {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.input-group input {
+  padding: 12px;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+  color: white;
+  font-size: 1.2rem;
+  font-family: 'Consolas', 'Monaco', monospace;
+  text-align: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input-group input:focus {
+  outline: none;
+  border-color: #9C27B0;
+}
+
+.input-color-indicator {
+  height: 4px;
+  border-radius: 2px;
+  margin-top: 4px;
+}
+
+.input-color-indicator.silence {
+  background: #2196F3;
+}
+
+.input-color-indicator.speech {
+  background: #4CAF50;
+}
+
+.input-color-indicator.threshold {
+  background: #F44336;
+}
+
+/* 自動校準區域 */
+.auto-calibration-area {
+  margin-bottom: 20px;
+}
+
+.calibration-btn.large {
+  width: 100%;
+  padding: 16px 24px;
+  font-size: 1.1rem;
+}
+
+.calibration-in-progress {
+  padding: 16px;
+  background: rgba(156, 39, 176, 0.1);
+  border: 1px solid rgba(156, 39, 176, 0.3);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.calibration-step-indicator {
+  font-size: 0.9rem;
+  color: #9C27B0;
+  margin-bottom: 8px;
+}
+
+/* 校準圖表容器 */
+.calibration-chart-container {
+  margin-bottom: 16px;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.calibration-chart {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 說話指示器 */
+.speaking-indicator {
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.speaking-indicator.silent {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.speaking-indicator.speaking {
+  background: #4CAF50;
+  color: white;
+  box-shadow: 0 0 15px rgba(76, 175, 80, 0.5);
+}
+
+/* 圖例 - 新版 */
+.chart-legend {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 8px;
+}
+
+.legend-line {
+  display: inline-block;
+  width: 20px;
+  height: 3px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-radius: 2px;
+}
+
+.legend-line.silence {
+  background: #2196F3;
+}
+
+.legend-line.speech {
+  background: #4CAF50;
+}
+
+.legend-line.threshold {
+  background: #F44336;
+}
+
+/* 狀態訊息 */
+.calibration-status-message {
+  text-align: center;
+  padding: 10px;
+  background: rgba(76, 175, 80, 0.1);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  border-radius: 6px;
+  color: #4CAF50;
+  margin-bottom: 16px;
+}
+
+/* 操作按鈕行 */
+.calibration-actions-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.calibration-btn.small {
+  padding: 8px 16px;
+  font-size: 0.9rem;
+}
+
+/* 舊版校準區塊（保留相容性） */
 .calibration-section h2 {
   color: #9C27B0;
 }
@@ -1100,6 +1302,29 @@
   }
 
   .calibration-actions {
+    flex-direction: column;
+  }
+
+  /* 新版校準響應式 */
+  .calibration-inputs {
+    grid-template-columns: 1fr;
+  }
+
+  .volume-number {
+    font-size: 3rem;
+  }
+
+  .chart-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .chart-legend {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .calibration-actions-row {
     flex-direction: column;
   }
 }

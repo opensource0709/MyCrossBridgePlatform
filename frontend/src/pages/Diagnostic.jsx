@@ -42,15 +42,18 @@ export default function Diagnostic() {
   const [playingTtsId, setPlayingTtsId] = useState(null); // 正在播放的項目 ID
   const [ttsError, setTtsError] = useState('');
 
-  // 校準狀態
-  const [calibrationStep, setCalibrationStep] = useState(0); // 0=未開始, 1=靜音採樣, 2=說話採樣, 3=驗證, 4=完成
+  // 校準狀態（新版簡化設計）
+  const [calibrationStep, setCalibrationStep] = useState(0); // 0=待機, 1=靜音採樣中, 2=說話採樣中
   const [calibrationProgress, setCalibrationProgress] = useState(0); // 0-100
-  const [calibrationData, setCalibrationData] = useState(null); // 校準結果
   const [calibrationMessage, setCalibrationMessage] = useState('');
-  const [savedCalibration, setSavedCalibration] = useState(null); // 已儲存的校準資料
-  const [isVerificationTesting, setIsVerificationTesting] = useState(false); // 驗證測試進行中
-  const [verificationSpeaking, setVerificationSpeaking] = useState(false); // 驗證時的說話狀態
-  const [verificationVolume, setVerificationVolume] = useState(0); // 驗證時的即時音量
+
+  // 三個可手動調整的校準值
+  const [silenceAvg, setSilenceAvg] = useState(5);   // 靜音平均值
+  const [speechAvg, setSpeechAvg] = useState(40);    // 說話平均值
+  const [threshold, setThreshold] = useState(22);     // 判斷門檻
+
+  // 即時說話狀態
+  const [isSpeakingNow, setIsSpeakingNow] = useState(false);
 
   // Refs
   const videoRef = useRef(null);
@@ -65,10 +68,10 @@ export default function Diagnostic() {
   const audioChunksRef = useRef([]);
   const calibrationSamplesRef = useRef([]); // 校準時收集的音量樣本
   const calibrationIntervalRef = useRef(null);
-  const currentVolumeRef = useRef(0); // 即時音量 ref（供校準使用）
-  const volumeHistoryRef = useRef([]); // 驗證時的音量歷史（最近 10 秒）
-  const verificationCanvasRef = useRef(null); // 驗證曲線圖 canvas
-  const verificationAnimationRef = useRef(null); // 驗證動畫 frame
+  const currentVolumeRef = useRef(0); // 即時音量 ref
+  const volumeHistoryRef = useRef([]); // 音量歷史（最近 10 秒）
+  const calibrationChartRef = useRef(null); // 校準曲線圖 canvas
+  const calibrationChartAnimationRef = useRef(null); // 校準曲線圖動畫
 
   // 載入已儲存的校準資料
   useEffect(() => {
@@ -76,13 +79,21 @@ export default function Diagnostic() {
     if (saved) {
       try {
         const data = JSON.parse(saved);
-        setSavedCalibration(data);
+        setSilenceAvg(data.silenceAvg || 5);
+        setSpeechAvg(data.speechAvg || 40);
+        setThreshold(data.threshold || 22);
         console.log('[校準] 載入已儲存的校準資料:', data);
       } catch (e) {
         console.error('[校準] 無法解析已儲存的校準資料');
       }
     }
   }, []);
+
+  // 自動更新判斷門檻（當靜音或說話平均值改變時）
+  const updateThresholdAuto = useCallback(() => {
+    const newThreshold = Math.round((silenceAvg + speechAvg) / 2);
+    setThreshold(newThreshold);
+  }, [silenceAvg, speechAvg]);
 
   // 列出所有裝置
   const enumerateDevices = useCallback(async () => {
@@ -566,211 +577,245 @@ export default function Diagnostic() {
     return dir === 'zh-to-vi' ? 'vi' : 'zh';
   };
 
-  // ========== 校準功能 ==========
+  // ========== 校準功能（新版簡化設計）==========
 
-  // 開始校準流程
-  const startCalibration = () => {
+  // 繪製校準曲線圖（持續執行）
+  const drawCalibrationChart = useCallback(() => {
+    const canvas = calibrationChartRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+    const padding = { top: 20, right: 80, bottom: 30, left: 50 };
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
+
+    // 取得即時音量
+    const volume = currentVolumeRef.current;
+    const now = Date.now();
+    const speaking = volume > threshold;
+
+    // 加入歷史
+    volumeHistoryRef.current.push({ time: now, volume, speaking });
+
+    // 只保留最近 10 秒
+    const tenSecondsAgo = now - 10000;
+    volumeHistoryRef.current = volumeHistoryRef.current.filter(d => d.time > tenSecondsAgo);
+
+    // 更新說話狀態
+    setIsSpeakingNow(speaking);
+
+    // 清除畫布
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+    ctx.fillRect(0, 0, width, height);
+
+    // 計算 Y 軸範圍
+    const maxVolume = Math.max(100, speechAvg * 1.5, ...volumeHistoryRef.current.map(d => d.volume)) * 1.2;
+
+    // 繪製 Y 軸刻度
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'right';
+    ctx.lineWidth = 1;
+
+    const yTicks = 5;
+    for (let i = 0; i <= yTicks; i++) {
+      const value = Math.round((maxVolume / yTicks) * i);
+      const y = padding.top + chartHeight - (i / yTicks) * chartHeight;
+
+      ctx.beginPath();
+      ctx.moveTo(padding.left, y);
+      ctx.lineTo(padding.left + chartWidth, y);
+      ctx.stroke();
+
+      ctx.fillText(value.toString(), padding.left - 8, y + 4);
+    }
+
+    // 繪製 X 軸標籤
+    ctx.textAlign = 'center';
+    ctx.fillText('10秒前', padding.left + 30, height - 8);
+    ctx.fillText('現在', padding.left + chartWidth - 20, height - 8);
+
+    // 繪製三條水平線
+    const drawHorizontalLine = (value, color, label, dashed = false) => {
+      if (value <= 0 || value > maxVolume) return;
+      const y = padding.top + chartHeight - (value / maxVolume) * chartHeight;
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      if (dashed) ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(padding.left, y);
+      ctx.lineTo(padding.left + chartWidth, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 標籤
+      ctx.fillStyle = color;
+      ctx.textAlign = 'left';
+      ctx.font = '10px monospace';
+      ctx.fillText(`${label}: ${value}`, padding.left + chartWidth + 5, y + 4);
+    };
+
+    // 藍線 = 靜音平均
+    drawHorizontalLine(silenceAvg, '#2196F3', '靜音', true);
+    // 綠線 = 說話平均
+    drawHorizontalLine(speechAvg, '#4CAF50', '說話', true);
+    // 紅線 = 判斷門檻（最重要，實線）
+    drawHorizontalLine(threshold, '#F44336', '門檻', false);
+
+    // 繪製音量曲線
+    if (volumeHistoryRef.current.length > 1) {
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+
+      let lastSpeaking = null;
+      volumeHistoryRef.current.forEach((point, index) => {
+        const x = padding.left + ((point.time - tenSecondsAgo) / 10000) * chartWidth;
+        const y = padding.top + chartHeight - (Math.min(point.volume, maxVolume) / maxVolume) * chartHeight;
+
+        if (lastSpeaking !== point.speaking) {
+          if (index > 0) {
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+          }
+          ctx.strokeStyle = point.speaking ? '#4CAF50' : 'rgba(255, 255, 255, 0.5)';
+          lastSpeaking = point.speaking;
+        }
+
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.stroke();
+
+      // 目前點
+      const lastPoint = volumeHistoryRef.current[volumeHistoryRef.current.length - 1];
+      const lastX = padding.left + chartWidth;
+      const lastY = padding.top + chartHeight - (Math.min(lastPoint.volume, maxVolume) / maxVolume) * chartHeight;
+
+      ctx.beginPath();
+      ctx.arc(lastX, lastY, 6, 0, Math.PI * 2);
+      ctx.fillStyle = lastPoint.speaking ? '#4CAF50' : 'rgba(255, 255, 255, 0.6)';
+      ctx.fill();
+    }
+
+    calibrationChartAnimationRef.current = requestAnimationFrame(drawCalibrationChart);
+  }, [silenceAvg, speechAvg, threshold]);
+
+  // 啟動校準曲線圖
+  useEffect(() => {
+    if (calibrationChartRef.current) {
+      drawCalibrationChart();
+    }
+    return () => {
+      if (calibrationChartAnimationRef.current) {
+        cancelAnimationFrame(calibrationChartAnimationRef.current);
+      }
+    };
+  }, [drawCalibrationChart]);
+
+  // 開始自動校準
+  const startAutoCalibration = () => {
     setCalibrationStep(1);
     setCalibrationProgress(0);
-    setCalibrationData(null);
-    setCalibrationMessage('請保持安靜，正在採樣背景噪音...');
+    setCalibrationMessage('請保持安靜 5 秒...');
     calibrationSamplesRef.current = [];
 
     console.log('[校準] 開始靜音採樣...');
 
-    // 開始收集靜音樣本 (5秒)
     const samples = [];
     let elapsed = 0;
-    let secondCounter = 0;
-    const duration = 5000; // 5秒
-    const interval = 50; // 每50ms採樣一次
-
-    calibrationIntervalRef.current = setInterval(() => {
-      const volume = currentVolumeRef.current; // 使用 ref 取得即時音量
-      samples.push(volume);
-      elapsed += interval;
-      setCalibrationProgress(Math.round((elapsed / duration) * 100));
-
-      // 每秒印出一次音量
-      const currentSecond = Math.floor(elapsed / 1000);
-      if (currentSecond > secondCounter) {
-        secondCounter = currentSecond;
-        const recentSamples = samples.slice(-20); // 最近 1 秒的樣本
-        const avgRecent = recentSamples.reduce((a, b) => a + b, 0) / recentSamples.length;
-        console.log(`[校準] 靜音採樣 第${currentSecond}秒: 即時=${volume.toFixed(1)}, 平均=${avgRecent.toFixed(1)}`);
-      }
-
-      if (elapsed >= duration) {
-        clearInterval(calibrationIntervalRef.current);
-        finishSilenceSampling(samples);
-      }
-    }, interval);
-  };
-
-  // 完成靜音採樣
-  const finishSilenceSampling = (samples) => {
-    // 計算靜音統計
-    const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
-    const max = Math.max(...samples);
-    const min = Math.min(...samples);
-    const stdDev = Math.sqrt(
-      samples.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / samples.length
-    );
-
-    calibrationSamplesRef.current = {
-      silence: { samples, avg, max, min, stdDev }
-    };
-
-    console.log('[校準] 靜音採樣完成:', {
-      樣本數: samples.length,
-      平均: avg.toFixed(1),
-      最大: max.toFixed(1),
-      最小: min.toFixed(1),
-      標準差: stdDev.toFixed(1)
-    });
-
-    // 進入說話採樣階段
-    setCalibrationStep(2);
-    setCalibrationProgress(0);
-    setCalibrationMessage('請正常說話 5 秒，例如數 1 到 10...');
-
-    console.log('[校準] 開始說話採樣...');
-
-    // 開始收集說話樣本 (5秒)
-    const speechSamples = [];
-    let elapsed = 0;
-    let secondCounter = 0;
     const duration = 5000;
     const interval = 50;
 
     calibrationIntervalRef.current = setInterval(() => {
-      const volume = currentVolumeRef.current; // 使用 ref 取得即時音量
-      speechSamples.push(volume);
+      const volume = currentVolumeRef.current;
+      samples.push(volume);
       elapsed += interval;
       setCalibrationProgress(Math.round((elapsed / duration) * 100));
 
-      // 每秒印出一次音量
-      const currentSecond = Math.floor(elapsed / 1000);
-      if (currentSecond > secondCounter) {
-        secondCounter = currentSecond;
-        const recentSamples = speechSamples.slice(-20); // 最近 1 秒的樣本
-        const avgRecent = recentSamples.reduce((a, b) => a + b, 0) / recentSamples.length;
-        console.log(`[校準] 說話採樣 第${currentSecond}秒: 即時=${volume.toFixed(1)}, 平均=${avgRecent.toFixed(1)}`);
-      }
-
       if (elapsed >= duration) {
         clearInterval(calibrationIntervalRef.current);
-        finishSpeechSampling(speechSamples);
+
+        // 計算靜音平均
+        const avg = Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
+        setSilenceAvg(avg);
+        console.log('[校準] 靜音採樣完成, 平均:', avg);
+
+        // 進入說話採樣
+        startSpeechSampling();
       }
     }, interval);
   };
 
-  // 完成說話採樣
-  const finishSpeechSampling = (samples) => {
-    // 計算說話統計
-    const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
-    const max = Math.max(...samples);
-    const min = Math.min(...samples);
-    const stdDev = Math.sqrt(
-      samples.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / samples.length
-    );
-
-    // 過濾出說話時的音量（高於靜音平均值的樣本）
-    const silenceAvg = calibrationSamplesRef.current.silence.avg;
-    const speechOnlySamples = samples.filter(v => v > silenceAvg * 1.5);
-    const speechAvg = speechOnlySamples.length > 0
-      ? speechOnlySamples.reduce((a, b) => a + b, 0) / speechOnlySamples.length
-      : avg;
-
-    calibrationSamplesRef.current.speech = { samples, avg, max, min, stdDev, speechAvg };
-
-    console.log('[校準] 說話採樣完成:', {
-      樣本數: samples.length,
-      平均: avg.toFixed(1),
-      最大: max.toFixed(1),
-      最小: min.toFixed(1),
-      標準差: stdDev.toFixed(1),
-      說話平均: speechAvg.toFixed(1),
-      高於靜音的樣本數: speechOnlySamples.length
-    });
-
-    // 計算校準參數
-    calculateCalibration();
-  };
-
-  // 計算校準參數
-  const calculateCalibration = () => {
-    const silence = calibrationSamplesRef.current.silence;
-    const speech = calibrationSamplesRef.current.speech;
-
-    console.log('[校準] 開始計算閾值...');
-    console.log('[校準] 靜音數據:', {
-      平均: silence.avg.toFixed(1),
-      最大: silence.max.toFixed(1),
-      標準差: silence.stdDev.toFixed(1)
-    });
-    console.log('[校準] 說話數據:', {
-      平均: speech.avg.toFixed(1),
-      說話平均: speech.speechAvg.toFixed(1),
-      最大: speech.max.toFixed(1)
-    });
-
-    // 計算閾值
-    // 靜音閾值 = 靜音平均 + 2倍標準差
-    const silenceThreshold = Math.round(silence.avg + silence.stdDev * 2);
-    console.log(`[校準] 靜音閾值 = ${silence.avg.toFixed(1)} + 2*${silence.stdDev.toFixed(1)} = ${silenceThreshold}`);
-
-    // 說話閾值 = 靜音閾值和說話平均的中間值
-    const speakingThreshold = Math.round((silenceThreshold + speech.speechAvg) / 2);
-    console.log(`[校準] 說話閾值 = (${silenceThreshold} + ${speech.speechAvg.toFixed(1)}) / 2 = ${speakingThreshold}`);
-
-    // VAD 開始閾值 = 說話閾值的 80%
-    const vadStartThreshold = Math.round(speakingThreshold * 0.8);
-
-    // VAD 結束閾值 = 說話閾值的 60%
-    const vadEndThreshold = Math.round(speakingThreshold * 0.6);
-
-    const calibration = {
-      silenceAvg: Math.round(silence.avg),
-      silenceMax: Math.round(silence.max),
-      silenceStdDev: Math.round(silence.stdDev),
-      speechAvg: Math.round(speech.speechAvg),
-      speechMax: Math.round(speech.max),
-      silenceThreshold,
-      speakingThreshold,
-      vadStartThreshold,
-      vadEndThreshold,
-      calibratedAt: new Date().toISOString(),
-    };
-
-    setCalibrationData(calibration);
-    console.log('[校準] 最終結果:', calibration);
-
-    // 進入驗證階段
-    setCalibrationStep(3);
+  // 說話採樣
+  const startSpeechSampling = () => {
+    setCalibrationStep(2);
     setCalibrationProgress(0);
-    setCalibrationMessage('校準完成！請說話測試效果，看綠燈是否正確亮起...');
+    setCalibrationMessage('請正常說話 5 秒（例如數 1 到 10）...');
+
+    console.log('[校準] 開始說話採樣...');
+
+    const samples = [];
+    let elapsed = 0;
+    const duration = 5000;
+    const interval = 50;
+
+    calibrationIntervalRef.current = setInterval(() => {
+      const volume = currentVolumeRef.current;
+      samples.push(volume);
+      elapsed += interval;
+      setCalibrationProgress(Math.round((elapsed / duration) * 100));
+
+      if (elapsed >= duration) {
+        clearInterval(calibrationIntervalRef.current);
+
+        // 計算說話平均（取較高的值）
+        const sorted = [...samples].sort((a, b) => b - a);
+        const top60Percent = sorted.slice(0, Math.floor(sorted.length * 0.6));
+        const avg = Math.round(top60Percent.reduce((a, b) => a + b, 0) / top60Percent.length);
+        setSpeechAvg(avg);
+
+        // 自動計算門檻
+        const newThreshold = Math.round((silenceAvg + avg) / 2);
+        setThreshold(newThreshold);
+
+        console.log('[校準] 說話採樣完成, 平均:', avg, '門檻:', newThreshold);
+
+        // 完成
+        setCalibrationStep(0);
+        setCalibrationProgress(0);
+        setCalibrationMessage('校準完成！');
+
+        // 自動儲存
+        saveCalibrationData(silenceAvg, avg, newThreshold);
+      }
+    }, interval);
   };
 
   // 儲存校準資料
-  const saveCalibration = () => {
-    if (!calibrationData) return;
-
-    localStorage.setItem(CALIBRATION_KEY, JSON.stringify(calibrationData));
-    setSavedCalibration(calibrationData);
-    setCalibrationStep(4);
-    setCalibrationMessage('校準資料已儲存！');
-    console.log('[校準] 已儲存到 localStorage');
+  const saveCalibrationData = (silence, speech, thresh) => {
+    const data = {
+      silenceAvg: silence,
+      speechAvg: speech,
+      threshold: thresh,
+      calibratedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(CALIBRATION_KEY, JSON.stringify(data));
+    console.log('[校準] 已儲存:', data);
   };
 
-  // 重置校準
-  const resetCalibration = () => {
-    localStorage.removeItem(CALIBRATION_KEY);
-    setSavedCalibration(null);
-    setCalibrationStep(0);
-    setCalibrationData(null);
-    setCalibrationMessage('');
-    console.log('[校準] 已重置');
+  // 手動儲存
+  const saveCurrentCalibration = () => {
+    saveCalibrationData(silenceAvg, speechAvg, threshold);
+    setCalibrationMessage('已儲存！');
+    setTimeout(() => setCalibrationMessage(''), 2000);
   };
 
   // 取消校準
@@ -778,211 +823,20 @@ export default function Diagnostic() {
     if (calibrationIntervalRef.current) {
       clearInterval(calibrationIntervalRef.current);
     }
-    stopVerificationTest();
     setCalibrationStep(0);
     setCalibrationProgress(0);
-    setCalibrationData(null);
     setCalibrationMessage('');
   };
 
-  // 開始驗證測試
-  const startVerificationTest = () => {
-    volumeHistoryRef.current = [];
-    verificationSpeakingRef.current = false;
-    setIsVerificationTesting(true);
-    console.log('[驗證] 開始測試');
-
-    // 開始繪製曲線圖
-    const drawVerificationChart = () => {
-      const canvas = verificationCanvasRef.current;
-      if (!canvas || !isVerificationTesting) return;
-
-      const ctx = canvas.getContext('2d');
-      const width = canvas.width;
-      const height = canvas.height;
-      const padding = { top: 20, right: 60, bottom: 30, left: 50 };
-      const chartWidth = width - padding.left - padding.right;
-      const chartHeight = height - padding.top - padding.bottom;
-
-      // 取得即時音量並加入歷史
-      const volume = currentVolumeRef.current;
-      const now = Date.now();
-      volumeHistoryRef.current.push({ time: now, volume, speaking: verificationSpeakingRef.current });
-
-      // 只保留最近 10 秒的數據
-      const tenSecondsAgo = now - 10000;
-      volumeHistoryRef.current = volumeHistoryRef.current.filter(d => d.time > tenSecondsAgo);
-
-      // 清除畫布
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
-      ctx.fillRect(0, 0, width, height);
-
-      // 計算 Y 軸範圍（0 到 max(100, 最大音量*1.2)）
-      const maxVolume = Math.max(100, ...volumeHistoryRef.current.map(d => d.volume)) * 1.2;
-
-      // 繪製 Y 軸刻度
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-      ctx.font = '11px monospace';
-      ctx.textAlign = 'right';
-
-      const yTicks = 5;
-      for (let i = 0; i <= yTicks; i++) {
-        const value = Math.round((maxVolume / yTicks) * i);
-        const y = padding.top + chartHeight - (i / yTicks) * chartHeight;
-
-        // 水平格線
-        ctx.beginPath();
-        ctx.moveTo(padding.left, y);
-        ctx.lineTo(padding.left + chartWidth, y);
-        ctx.stroke();
-
-        // 刻度數值
-        ctx.fillText(value.toString(), padding.left - 8, y + 4);
-      }
-
-      // 繪製 X 軸標籤
-      ctx.textAlign = 'center';
-      ctx.fillText('10秒前', padding.left, height - 8);
-      ctx.fillText('現在', padding.left + chartWidth, height - 8);
-
-      // 繪製閾值紅線
-      const threshold = calibrationData?.vadStartThreshold || 30;
-      const thresholdY = padding.top + chartHeight - (threshold / maxVolume) * chartHeight;
-
-      ctx.strokeStyle = '#F44336';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 5]);
-      ctx.beginPath();
-      ctx.moveTo(padding.left, thresholdY);
-      ctx.lineTo(padding.left + chartWidth, thresholdY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // 閾值標籤
-      ctx.fillStyle = '#F44336';
-      ctx.textAlign = 'left';
-      ctx.fillText(`閾值: ${threshold}`, padding.left + chartWidth + 5, thresholdY + 4);
-
-      // 繪製音量曲線
-      if (volumeHistoryRef.current.length > 1) {
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-
-        let lastSpeaking = null;
-        volumeHistoryRef.current.forEach((point, index) => {
-          const x = padding.left + ((point.time - tenSecondsAgo) / 10000) * chartWidth;
-          const y = padding.top + chartHeight - (point.volume / maxVolume) * chartHeight;
-
-          // 根據說話狀態切換顏色
-          if (lastSpeaking !== point.speaking) {
-            if (index > 0) {
-              ctx.stroke();
-              ctx.beginPath();
-              ctx.moveTo(x, y);
-            }
-            ctx.strokeStyle = point.speaking ? '#4CAF50' : 'rgba(255, 255, 255, 0.4)';
-            lastSpeaking = point.speaking;
-          }
-
-          if (index === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
-        });
-        ctx.stroke();
-
-        // 繪製目前點
-        const lastPoint = volumeHistoryRef.current[volumeHistoryRef.current.length - 1];
-        const lastX = padding.left + chartWidth;
-        const lastY = padding.top + chartHeight - (lastPoint.volume / maxVolume) * chartHeight;
-
-        ctx.beginPath();
-        ctx.arc(lastX, lastY, 5, 0, Math.PI * 2);
-        ctx.fillStyle = lastPoint.speaking ? '#4CAF50' : 'rgba(255, 255, 255, 0.6)';
-        ctx.fill();
-      }
-
-      // 更新說話狀態
-      const startThreshold = calibrationData?.vadStartThreshold || 30;
-      const endThreshold = calibrationData?.vadEndThreshold || 20;
-
-      const wasSpeaking = verificationSpeakingRef.current;
-
-      if (!verificationSpeakingRef.current && volume > startThreshold) {
-        verificationSpeakingRef.current = true;
-      } else if (verificationSpeakingRef.current && volume < endThreshold) {
-        verificationSpeakingRef.current = false;
-      }
-
-      // 更新 state 觸發 UI 更新
-      setVerificationVolume(Math.round(volume));
-      if (wasSpeaking !== verificationSpeakingRef.current) {
-        setVerificationSpeaking(verificationSpeakingRef.current);
-        // 狀態變化時印出 log
-        console.log(`[驗證] 音量: ${volume.toFixed(1)}, 閾值: ${startThreshold}, 狀態: ${verificationSpeakingRef.current ? '說話中' : '靜音'}`);
-      }
-
-      verificationAnimationRef.current = requestAnimationFrame(drawVerificationChart);
-    };
-
-    drawVerificationChart();
+  // 重置為預設值
+  const resetToDefaults = () => {
+    setSilenceAvg(5);
+    setSpeechAvg(40);
+    setThreshold(22);
+    localStorage.removeItem(CALIBRATION_KEY);
+    setCalibrationMessage('已重置為預設值');
+    setTimeout(() => setCalibrationMessage(''), 2000);
   };
-
-  // 停止驗證測試
-  const stopVerificationTest = () => {
-    setIsVerificationTesting(false);
-    if (verificationAnimationRef.current) {
-      cancelAnimationFrame(verificationAnimationRef.current);
-      verificationAnimationRef.current = null;
-    }
-    console.log('[驗證] 停止測試');
-  };
-
-  // 驗證階段的說話狀態（用 ref 追蹤以實現遲滯效果）
-  const verificationSpeakingRef = useRef(false);
-
-  // 判斷目前是否為說話狀態（使用校準資料，帶遲滯效果）
-  const getVerificationStatus = useCallback(() => {
-    // 優先使用剛計算的 calibrationData（驗證階段）
-    const data = calibrationData || savedCalibration;
-    if (!data) {
-      return { speaking: micVolume > 30, volume: micVolume, threshold: 30 };
-    }
-
-    const volume = currentVolumeRef.current;
-    const startThreshold = data.vadStartThreshold;
-    const endThreshold = data.vadEndThreshold;
-
-    // 遲滯邏輯：
-    // 目前靜音 → 音量 > vadStartThreshold → 變成說話
-    // 目前說話 → 音量 < vadEndThreshold → 變成靜音
-    let speaking = verificationSpeakingRef.current;
-
-    if (!speaking && volume > startThreshold) {
-      speaking = true;
-      verificationSpeakingRef.current = true;
-    } else if (speaking && volume < endThreshold) {
-      speaking = false;
-      verificationSpeakingRef.current = false;
-    }
-
-    // 驗證階段時印出 console
-    if (calibrationStep === 3) {
-      console.log(`[驗證] 音量: ${volume.toFixed(1)}, 起點閾值: ${startThreshold}, 終點閾值: ${endThreshold}, 狀態: ${speaking ? '說話中' : '靜音'}`);
-    }
-
-    return {
-      speaking,
-      volume,
-      startThreshold,
-      endThreshold,
-    };
-  }, [micVolume, calibrationData, savedCalibration, calibrationStep]);
-
-  // 取得驗證狀態（每次 render 都會執行）
-  const verificationStatus = getVerificationStatus();
 
   return (
     <div className="diagnostic-page">
@@ -1107,199 +961,115 @@ export default function Diagnostic() {
           <p className="hint">說話時波形圖和頻譜圖應該有明顯變化</p>
         </section>
 
-        {/* 校準區塊 */}
-        <section className="device-section calibration-section">
-          <h2>自動校準</h2>
+        {/* 校準區塊（新版簡化設計） */}
+        <section className="device-section calibration-section-v2">
+          <h2>語音校準</h2>
 
-          {/* 已儲存的校準資料 */}
-          {savedCalibration && calibrationStep === 0 && (
-            <div className="saved-calibration">
-              <div className="calibration-status">
-                <span className="status-badge success">已校準</span>
-                <span className="calibration-date">
-                  {new Date(savedCalibration.calibratedAt).toLocaleString()}
-                </span>
-              </div>
-              <div className="calibration-params">
-                <div className="param-item">
-                  <span className="param-label">靜音閾值</span>
-                  <span className="param-value">{savedCalibration.silenceThreshold}</span>
-                </div>
-                <div className="param-item">
-                  <span className="param-label">說話閾值</span>
-                  <span className="param-value">{savedCalibration.speakingThreshold}</span>
-                </div>
-                <div className="param-item">
-                  <span className="param-label">VAD 起點</span>
-                  <span className="param-value">{savedCalibration.vadStartThreshold}</span>
-                </div>
-                <div className="param-item">
-                  <span className="param-label">VAD 終點</span>
-                  <span className="param-value">{savedCalibration.vadEndThreshold}</span>
-                </div>
-              </div>
-              <div className="calibration-actions">
-                <button className="calibration-btn secondary" onClick={resetCalibration}>
-                  重新校準
-                </button>
-              </div>
+          {/* 即時音量大數字顯示 */}
+          <div className="realtime-volume-display">
+            <div className="volume-number">{Math.round(micVolume)}</div>
+            <div className="volume-label-big">即時音量</div>
+          </div>
+
+          {/* 三個可調整的參數輸入 */}
+          <div className="calibration-inputs">
+            <div className="input-group">
+              <label>靜音平均</label>
+              <input
+                type="number"
+                value={silenceAvg}
+                onChange={(e) => setSilenceAvg(Math.max(0, parseInt(e.target.value) || 0))}
+                min="0"
+                max="100"
+              />
+              <div className="input-color-indicator silence"></div>
             </div>
-          )}
+            <div className="input-group">
+              <label>說話平均</label>
+              <input
+                type="number"
+                value={speechAvg}
+                onChange={(e) => setSpeechAvg(Math.max(0, parseInt(e.target.value) || 0))}
+                min="0"
+                max="200"
+              />
+              <div className="input-color-indicator speech"></div>
+            </div>
+            <div className="input-group">
+              <label>判斷門檻</label>
+              <input
+                type="number"
+                value={threshold}
+                onChange={(e) => setThreshold(Math.max(0, parseInt(e.target.value) || 0))}
+                min="0"
+                max="150"
+              />
+              <div className="input-color-indicator threshold"></div>
+            </div>
+          </div>
 
-          {/* 未校準狀態 */}
-          {!savedCalibration && calibrationStep === 0 && (
-            <div className="no-calibration">
-              <p>尚未校準，建議先進行校準以獲得最佳辨識效果。</p>
-              <button className="calibration-btn primary" onClick={startCalibration}>
-                開始校準
+          {/* 自動校準按鈕 */}
+          <div className="auto-calibration-area">
+            {calibrationStep === 0 ? (
+              <button className="calibration-btn primary large" onClick={startAutoCalibration}>
+                自動校準（靜音5秒 → 說話5秒）
               </button>
-            </div>
-          )}
-
-          {/* 校準進行中 */}
-          {calibrationStep > 0 && calibrationStep < 4 && (
-            <div className="calibration-progress">
-              {/* 步驟指示 */}
-              <div className="calibration-steps">
-                <div className={`step ${calibrationStep >= 1 ? 'active' : ''} ${calibrationStep > 1 ? 'done' : ''}`}>
-                  <span className="step-number">1</span>
-                  <span className="step-label">靜音採樣</span>
+            ) : (
+              <div className="calibration-in-progress">
+                <div className="calibration-step-indicator">
+                  {calibrationStep === 1 ? '步驟 1/2: 靜音採樣中...' : '步驟 2/2: 說話採樣中...'}
                 </div>
-                <div className="step-connector" />
-                <div className={`step ${calibrationStep >= 2 ? 'active' : ''} ${calibrationStep > 2 ? 'done' : ''}`}>
-                  <span className="step-number">2</span>
-                  <span className="step-label">說話採樣</span>
-                </div>
-                <div className="step-connector" />
-                <div className={`step ${calibrationStep >= 3 ? 'active' : ''}`}>
-                  <span className="step-number">3</span>
-                  <span className="step-label">驗證測試</span>
-                </div>
-              </div>
-
-              {/* 訊息 */}
-              <div className="calibration-message">{calibrationMessage}</div>
-
-              {/* 進度條 */}
-              {calibrationStep < 3 && (
+                <div className="calibration-message">{calibrationMessage}</div>
                 <div className="calibration-progress-bar">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${calibrationProgress}%` }}
-                  />
+                  <div className="progress-fill" style={{ width: `${calibrationProgress}%` }} />
                 </div>
-              )}
-
-              {/* 驗證階段 */}
-              {calibrationStep === 3 && (
-                <div className="verification-section">
-                  {/* 校準結果預覽 */}
-                  <div className="calibration-result-preview">
-                    <h4>校準結果</h4>
-                    <div className="calibration-params">
-                      <div className="param-item">
-                        <span className="param-label">靜音平均</span>
-                        <span className="param-value">{calibrationData?.silenceAvg}</span>
-                      </div>
-                      <div className="param-item">
-                        <span className="param-label">說話平均</span>
-                        <span className="param-value">{calibrationData?.speechAvg}</span>
-                      </div>
-                      <div className="param-item">
-                        <span className="param-label">VAD 起點</span>
-                        <span className="param-value highlight">{calibrationData?.vadStartThreshold}</span>
-                      </div>
-                      <div className="param-item">
-                        <span className="param-label">VAD 終點</span>
-                        <span className="param-value">{calibrationData?.vadEndThreshold}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 測試按鈕 */}
-                  {!isVerificationTesting ? (
-                    <button
-                      className="calibration-btn test-btn"
-                      onClick={startVerificationTest}
-                    >
-                      開始測試
-                    </button>
-                  ) : (
-                    <button
-                      className="calibration-btn test-btn active"
-                      onClick={stopVerificationTest}
-                    >
-                      停止測試
-                    </button>
-                  )}
-
-                  {/* 驗證測試區域 */}
-                  {isVerificationTesting && (
-                    <div className="verification-test-area">
-                      {/* 即時指示燈 */}
-                      <div className="verification-indicator">
-                        <div className={`speaking-light ${verificationSpeaking ? 'on' : 'off'}`}>
-                          {verificationSpeaking ? '說話中' : '靜音'}
-                        </div>
-                        <div className="current-volume">
-                          目前音量: {verificationVolume}
-                        </div>
-                      </div>
-
-                      {/* 即時音量曲線圖 */}
-                      <div className="verification-chart-container">
-                        <div className="chart-title">即時音量曲線（最近 10 秒）</div>
-                        <canvas
-                          ref={verificationCanvasRef}
-                          width={700}
-                          height={200}
-                          className="verification-chart"
-                        />
-                        <div className="chart-legend">
-                          <span className="legend-item speaking">
-                            <span className="legend-color"></span>說話中
-                          </span>
-                          <span className="legend-item silent">
-                            <span className="legend-color"></span>靜音
-                          </span>
-                          <span className="legend-item threshold">
-                            <span className="legend-line"></span>閾值
-                          </span>
-                        </div>
-                      </div>
-
-                      <p className="verification-hint">
-                        說話時綠線應該超過紅色閾值線，燈號變成「說話中」
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 操作按鈕 */}
-              <div className="calibration-actions">
-                {calibrationStep === 3 && (
-                  <button className="calibration-btn primary" onClick={saveCalibration}>
-                    儲存校準結果
-                  </button>
-                )}
                 <button className="calibration-btn secondary" onClick={cancelCalibration}>
                   取消
                 </button>
               </div>
+            )}
+          </div>
+
+          {/* 即時音量曲線圖（持續顯示） */}
+          <div className="calibration-chart-container">
+            <div className="chart-header">
+              <span className="chart-title">即時音量曲線（最近 10 秒）</span>
+              <div className={`speaking-indicator ${isSpeakingNow ? 'speaking' : 'silent'}`}>
+                {isSpeakingNow ? '● 說話中' : '○ 靜音'}
+              </div>
             </div>
+            <canvas
+              ref={calibrationChartRef}
+              width={700}
+              height={200}
+              className="calibration-chart"
+            />
+            <div className="chart-legend">
+              <span className="legend-item">
+                <span className="legend-line silence"></span>靜音平均（藍）
+              </span>
+              <span className="legend-item">
+                <span className="legend-line speech"></span>說話平均（綠）
+              </span>
+              <span className="legend-item">
+                <span className="legend-line threshold"></span>判斷門檻（紅）
+              </span>
+            </div>
+          </div>
+
+          {/* 校準訊息與操作 */}
+          {calibrationMessage && calibrationStep === 0 && (
+            <div className="calibration-status-message">{calibrationMessage}</div>
           )}
 
-          {/* 校準完成 */}
-          {calibrationStep === 4 && (
-            <div className="calibration-complete">
-              <div className="success-icon">✓</div>
-              <p>{calibrationMessage}</p>
-              <button className="calibration-btn secondary" onClick={() => setCalibrationStep(0)}>
-                完成
-              </button>
-            </div>
-          )}
+          <div className="calibration-actions-row">
+            <button className="calibration-btn secondary small" onClick={saveCurrentCalibration}>
+              儲存設定
+            </button>
+            <button className="calibration-btn secondary small" onClick={resetToDefaults}>
+              重置預設
+            </button>
+          </div>
         </section>
 
         {/* 翻譯測試區塊 */}
