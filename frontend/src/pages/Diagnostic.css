@@ -318,6 +318,253 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* 翻譯測試區塊 */
+.translation-section h2 {
+  color: #FF9800;
+}
+
+.direction-selector {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.direction-btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.direction-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.direction-btn.active {
+  background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+  color: white;
+  border-color: #FF9800;
+}
+
+.push-to-talk-btn {
+  width: 100%;
+  padding: 24px;
+  border-radius: 12px;
+  border: 3px solid #4CAF50;
+  background: rgba(76, 175, 80, 0.1);
+  color: #4CAF50;
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 12px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.push-to-talk-btn:hover:not(:disabled) {
+  background: rgba(76, 175, 80, 0.2);
+}
+
+.push-to-talk-btn:active:not(:disabled),
+.push-to-talk-btn.recording {
+  background: #4CAF50;
+  color: white;
+  transform: scale(0.98);
+}
+
+.push-to-talk-btn.recording {
+  animation: recording-pulse 0.5s infinite;
+}
+
+.push-to-talk-btn.processing {
+  background: rgba(255, 152, 0, 0.2);
+  border-color: #FF9800;
+  color: #FF9800;
+  cursor: wait;
+}
+
+.push-to-talk-btn:disabled {
+  opacity: 0.7;
+}
+
+@keyframes recording-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4); }
+  50% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); }
+}
+
+/* 翻譯結果 */
+.translation-result {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.translation-result.success {
+  border: 1px solid #4CAF50;
+}
+
+.translation-result.error {
+  border: 1px solid #F44336;
+}
+
+.result-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.result-label {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6);
+  min-width: 50px;
+}
+
+.result-text {
+  flex: 1;
+  font-size: 1.1rem;
+}
+
+.result-text.original {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.result-text.translated {
+  color: #4CAF50;
+  font-weight: bold;
+}
+
+.error-message {
+  color: #F44336;
+  text-align: center;
+}
+
+/* 延遲統計 */
+.latency-stats {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.latency-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.latency-label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.latency-value {
+  font-size: 1rem;
+  font-family: 'Consolas', 'Monaco', monospace;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.latency-item.total .latency-value {
+  color: #FFC107;
+  font-weight: bold;
+}
+
+/* 翻譯歷史 */
+.translation-history {
+  margin-top: 20px;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.history-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.clear-history-btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.5);
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clear-history-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.history-texts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.history-original {
+  color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+
+.history-arrow {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.history-translated {
+  color: #4CAF50;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+
+.history-latency {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.8rem;
+  font-family: 'Consolas', 'Monaco', monospace;
+  margin-left: 12px;
+}
+
 /* 響應式 */
 @media (max-width: 600px) {
   .diagnostic-content {
@@ -350,5 +597,32 @@
 
   .stat-value {
     font-size: 1.2rem;
+  }
+
+  .direction-selector {
+    flex-direction: column;
+  }
+
+  .latency-stats {
+    flex-wrap: wrap;
+  }
+
+  .latency-item {
+    min-width: 30%;
+  }
+
+  .history-texts {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .history-original,
+  .history-translated {
+    max-width: 100%;
+  }
+
+  .history-arrow {
+    display: none;
   }
 }

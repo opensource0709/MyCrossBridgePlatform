@@ -20,6 +20,7 @@ import usersRoutes from './routes/users.js';
 import matchingRoutes from './routes/matching.js';
 import messagesRoutes from './routes/messages.js';
 import agoraRoutes from './routes/agora.js';
+import diagnosticRoutes from './routes/diagnostic.js';
 
 // Middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -65,6 +66,7 @@ app.use('/api/users', usersRoutes);
 app.use('/api/matching', matchingRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/agora', agoraRoutes);
+app.use('/api/diagnostic', diagnosticRoutes);
 
 // WebSocket 連接處理
 io.on('connection', (socket) => {
