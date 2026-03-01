@@ -68,6 +68,9 @@ export default function Diagnostic() {
   const [isChartPaused, setIsChartPaused] = useState(false); // 曲線圖是否暫停
   const [hoverInfo, setHoverInfo] = useState(null); // 滑鼠懸停資訊 { x, time, volume }
 
+  // 進階音訊分析收合狀態
+  const [isAdvancedAudioOpen, setIsAdvancedAudioOpen] = useState(false);
+
   // Refs
   const videoRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -1355,6 +1358,46 @@ export default function Diagnostic() {
               </div>
             </div>
           </section>
+
+          {/* 進階音訊分析（可收合） */}
+          <section className="advanced-audio-section">
+            <button
+              className={`advanced-audio-toggle ${isAdvancedAudioOpen ? 'open' : ''}`}
+              onClick={() => setIsAdvancedAudioOpen(!isAdvancedAudioOpen)}
+            >
+              <span className="toggle-icon">{isAdvancedAudioOpen ? '▼' : '▶'}</span>
+              進階音訊分析
+            </button>
+            {isAdvancedAudioOpen && (
+              <div className="advanced-audio-content">
+                <div className="volume-stats-mini">
+                  <span>音量: {Math.round(micVolume)}</span>
+                  <span>峰值: {Math.round(peakVolume)}</span>
+                  <span className={micVolume > 30 ? 'speaking' : ''}>
+                    {micVolume > 30 ? '說話中' : '靜音'}
+                  </span>
+                </div>
+                <div className="canvas-container">
+                  <div className="canvas-label">波形圖（時域）</div>
+                  <canvas
+                    ref={waveformCanvasRef}
+                    width={500}
+                    height={80}
+                    className="audio-canvas"
+                  />
+                </div>
+                <div className="canvas-container">
+                  <div className="canvas-label">頻譜圖（FFT 頻域）</div>
+                  <canvas
+                    ref={spectrumCanvasRef}
+                    width={500}
+                    height={80}
+                    className="audio-canvas"
+                  />
+                </div>
+              </div>
+            )}
+          </section>
         </div>
 
         {/* ========== 右欄：翻譯與校準 ========== */}
@@ -1719,44 +1762,6 @@ export default function Diagnostic() {
           </section>
         </div>
 
-        {/* ========== 音訊視覺化（手機版才顯示）========== */}
-        <section className="device-section visualization-section">
-          <h2>音訊視覺化</h2>
-          <div className="volume-stats">
-            <div className="stat-item">
-              <span className="stat-label">目前音量</span>
-              <span className="stat-value">{Math.round(micVolume)}</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-label">峰值</span>
-              <span className="stat-value peak">{Math.round(peakVolume)}</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-label">狀態</span>
-              <span className={`stat-value status ${micVolume > 30 ? 'speaking' : 'silent'}`}>
-                {micVolume > 30 ? '說話中' : '靜音'}
-              </span>
-            </div>
-          </div>
-          <div className="canvas-container">
-            <div className="canvas-label">波形圖（時域）</div>
-            <canvas
-              ref={waveformCanvasRef}
-              width={600}
-              height={100}
-              className="audio-canvas"
-            />
-          </div>
-          <div className="canvas-container">
-            <div className="canvas-label">頻譜圖（FFT 頻域）</div>
-            <canvas
-              ref={spectrumCanvasRef}
-              width={600}
-              height={120}
-              className="audio-canvas"
-            />
-          </div>
-        </section>
       </div>
     </div>
   );

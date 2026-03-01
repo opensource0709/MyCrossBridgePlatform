@@ -68,78 +68,86 @@
     gap: 16px;
     padding: 16px;
     overflow: hidden;
-    max-height: calc(100vh - 60px);
+    height: calc(100vh - 60px);
   }
 
   .left-column {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     overflow: hidden;
+    height: 100%;
   }
 
   .right-column {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     overflow: hidden;
+    height: 100%;
   }
 
   /* 左欄區塊高度分配 */
   .left-column .camera-section {
-    flex: 6; /* 60% */
-    min-height: 0;
+    flex: 0 0 auto;
+    min-height: 350px;
     display: flex;
     flex-direction: column;
   }
 
+  .left-column .camera-section .camera-preview {
+    flex: 1;
+    min-height: 280px;
+    aspect-ratio: auto;
+  }
+
   .left-column .mic-section {
-    flex: 1.5;
-    min-height: 0;
+    flex: 0 0 auto;
   }
 
   .left-column .speaker-section {
-    flex: 1.5;
-    min-height: 0;
+    flex: 0 0 auto;
   }
 
   .left-column .status-summary {
-    flex: 1;
-    min-height: 0;
+    flex: 0 0 auto;
   }
 
-  /* 右欄區塊高度分配 */
-  .right-column .translation-section {
-    flex: 5; /* 50% */
+  .left-column .advanced-audio-section {
+    flex: 1 1 auto;
     min-height: 0;
+    overflow: hidden;
+  }
+
+  /* 右欄區塊高度分配 - 填滿整個高度 */
+  .right-column .translation-section {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .right-column .translation-section .translation-history {
+    flex: 1;
     overflow-y: auto;
   }
 
   .right-column .chart-section {
-    flex: 3; /* 30% */
+    flex: 0 0 180px;
     min-height: 0;
   }
 
   .right-column .calibration-section-v2 {
-    flex: 2; /* 20% */
+    flex: 0 0 auto;
     min-height: 0;
   }
 
-  /* 隱藏音訊視覺化（桌機版） */
+  /* 隱藏舊的音訊視覺化區塊（桌機版） */
   .visualization-section {
     display: none;
   }
 
-  /* 攝影機預覽填滿 */
-  .camera-section .camera-preview {
-    flex: 1;
-    min-height: 0;
-  }
-
-  .camera-section .camera-preview video {
-    height: 100%;
-    object-fit: cover;
-  }
 }
 
 /* ========== 平板與手機 Layout（<= 1024px）========== */
@@ -161,8 +169,9 @@
     display: contents;
   }
 
-  .visualization-section {
-    display: block;
+  /* 手機版進階音訊分析預設展開 */
+  .advanced-audio-section {
+    order: 100;
   }
 }
 
@@ -1120,11 +1129,7 @@
   font-size: 0.8rem;
 }
 
-/* ========== 音訊視覺化（手機版顯示）========== */
-.visualization-section h2 {
-  color: #667eea;
-}
-
+/* ========== 音量統計樣式 ========== */
 .volume-stats {
   display: flex;
   gap: 12px;
@@ -1186,6 +1191,80 @@
   background: rgba(0, 0, 0, 0.3);
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ========== 進階音訊分析（可收合）========== */
+.advanced-audio-section {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.advanced-audio-toggle {
+  width: 100%;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.advanced-audio-toggle:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.advanced-audio-toggle.open {
+  color: #667eea;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.toggle-icon {
+  font-size: 0.7rem;
+  transition: transform 0.2s;
+}
+
+.advanced-audio-content {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.volume-stats-mini {
+  display: flex;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.volume-stats-mini span {
+  font-family: 'Consolas', monospace;
+}
+
+.volume-stats-mini .speaking {
+  color: #4CAF50;
+  font-weight: bold;
+}
+
+.advanced-audio-content .canvas-container {
+  margin-bottom: 0;
+}
+
+.advanced-audio-content .audio-canvas {
+  width: 100%;
+  height: auto;
 }
 
 /* ========== 響應式微調 ========== */
