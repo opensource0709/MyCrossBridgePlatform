@@ -48,13 +48,14 @@ export default function Diagnostic() {
   const [calibrationMessage, setCalibrationMessage] = useState('');
 
   // 四個可手動調整的校準值
-  const [silenceMax, setSilenceMax] = useState(5);     // 靜音最大值
+  const [silenceAvg, setSilenceAvg] = useState(5);     // 靜音平均值
   const [speechMax, setSpeechMax] = useState(40);      // 說話最大值
   const [threshold, setThreshold] = useState(22);       // 判斷門檻
   const [sentenceEndWait, setSentenceEndWait] = useState(500); // 句尾等待時間 (ms)
 
-  // 即時說話狀態
+  // 即時說話狀態（使用滑動延伸邏輯）
   const [isSpeakingNow, setIsSpeakingNow] = useState(false);
+  const speakingEndTimeRef = useRef(0); // 說話狀態結束時間（滑動延伸用）
 
   // 曲線圖狀態
   const [isChartPaused, setIsChartPaused] = useState(false); // 曲線圖是否暫停
@@ -84,7 +85,7 @@ export default function Diagnostic() {
     if (saved) {
       try {
         const data = JSON.parse(saved);
-        setSilenceMax(data.silenceMax || 5);
+        setSilenceAvg(data.silenceAvg || 5);
         setSpeechMax(data.speechMax || 40);
         setThreshold(data.threshold || 22);
         setSentenceEndWait(data.sentenceEndWait || 500);
@@ -95,11 +96,11 @@ export default function Diagnostic() {
     }
   }, []);
 
-  // 自動更新判斷門檻（當靜音或說話最大值改變時）
+  // 自動更新判斷門檻（當靜音平均值或說話最大值改變時）
   const updateThresholdAuto = useCallback(() => {
-    const newThreshold = Math.round((silenceMax + speechMax) / 2);
+    const newThreshold = Math.round((silenceAvg + speechMax) / 2);
     setThreshold(newThreshold);
-  }, [silenceMax, speechMax]);
+  }, [silenceAvg, speechMax]);
 
   // 列出所有裝置
   const enumerateDevices = useCallback(async () => {
@@ -607,7 +608,21 @@ export default function Diagnostic() {
     // 取得即時音量
     const volume = currentVolumeRef.current;
     const now = Date.now();
-    const speaking = volume > threshold;
+    const exceedsThreshold = volume > threshold;
+
+    // 滑動延伸邏輯：判斷說話狀態
+    let speaking = false;
+    if (exceedsThreshold) {
+      // 音量超過門檻 → 延伸說話狀態到「現在 + 句尾等待時間」
+      speakingEndTimeRef.current = now + sentenceEndWait;
+      speaking = true;
+    } else if (now < speakingEndTimeRef.current) {
+      // 還在句尾等待時間內 → 維持說話狀態
+      speaking = true;
+    } else {
+      // 超過句尾等待時間且音量低於門檻 → 說話結束
+      speaking = false;
+    }
 
     // 只在非暫停時加入歷史和更新
     if (!isChartPaused) {
@@ -675,8 +690,8 @@ export default function Diagnostic() {
       ctx.fillText(`${label}: ${value}`, padding.left + chartWidth + 5, y + 4);
     };
 
-    // 藍線 = 靜音最大值
-    drawHorizontalLine(silenceMax, '#2196F3', '靜音', true);
+    // 藍線 = 靜音平均值
+    drawHorizontalLine(silenceAvg, '#2196F3', '靜音', true);
     // 綠線 = 說話最大值
     drawHorizontalLine(speechMax, '#4CAF50', '說話', true);
     // 紅線 = 判斷門檻（最重要，實線）
@@ -792,7 +807,7 @@ export default function Diagnostic() {
     }
 
     calibrationChartAnimationRef.current = requestAnimationFrame(drawCalibrationChart);
-  }, [silenceMax, speechMax, threshold, isChartPaused, hoverInfo]);
+  }, [silenceAvg, speechMax, threshold, sentenceEndWait, isChartPaused, hoverInfo]);
 
   // 啟動校準曲線圖
   useEffect(() => {
@@ -857,19 +872,19 @@ export default function Diagnostic() {
       if (elapsed >= duration) {
         clearInterval(calibrationIntervalRef.current);
 
-        // 計算靜音最大值
-        const maxVal = Math.round(Math.max(...samples));
-        setSilenceMax(maxVal);
-        console.log('[校準] 靜音採樣完成, 最大值:', maxVal);
+        // 計算靜音平均值（背景噪音是持續穩定的聲音，用平均值更準確）
+        const avgVal = Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
+        setSilenceAvg(avgVal);
+        console.log('[校準] 靜音採樣完成, 平均值:', avgVal);
 
-        // 進入說話採樣，並傳入靜音最大值
-        startSpeechSampling(maxVal);
+        // 進入說話採樣，並傳入靜音平均值
+        startSpeechSampling(avgVal);
       }
     }, interval);
   };
 
   // 說話採樣
-  const startSpeechSampling = (silenceMaxVal) => {
+  const startSpeechSampling = (silenceAvgVal) => {
     setCalibrationStep(2);
     setCalibrationProgress(0);
     setCalibrationMessage('請正常說話 5 秒（例如數 1 到 10）...');
@@ -890,12 +905,12 @@ export default function Diagnostic() {
       if (elapsed >= duration) {
         clearInterval(calibrationIntervalRef.current);
 
-        // 計算說話最大值
+        // 計算說話最大值（人聲是脈衝波，用最大值才能捕捉到說話的峰值）
         const maxVal = Math.round(Math.max(...samples));
         setSpeechMax(maxVal);
 
-        // 自動計算門檻 = (靜音最大值 + 說話最大值) / 2
-        const newThreshold = Math.round((silenceMaxVal + maxVal) / 2);
+        // 自動計算門檻 = (靜音平均值 + 說話最大值) / 2
+        const newThreshold = Math.round((silenceAvgVal + maxVal) / 2);
         setThreshold(newThreshold);
 
         console.log('[校準] 說話採樣完成, 最大值:', maxVal, '門檻:', newThreshold);
@@ -906,7 +921,7 @@ export default function Diagnostic() {
         setCalibrationMessage('校準完成！');
 
         // 自動儲存
-        saveCalibrationData(silenceMaxVal, maxVal, newThreshold);
+        saveCalibrationData(silenceAvgVal, maxVal, newThreshold);
       }
     }, interval);
   };
@@ -914,7 +929,7 @@ export default function Diagnostic() {
   // 儲存校準資料
   const saveCalibrationData = (silence, speech, thresh) => {
     const data = {
-      silenceMax: silence,
+      silenceAvg: silence,
       speechMax: speech,
       threshold: thresh,
       sentenceEndWait: sentenceEndWait,
@@ -926,7 +941,7 @@ export default function Diagnostic() {
 
   // 手動儲存
   const saveCurrentCalibration = () => {
-    saveCalibrationData(silenceMax, speechMax, threshold);
+    saveCalibrationData(silenceAvg, speechMax, threshold);
     setCalibrationMessage('已儲存！');
     setTimeout(() => setCalibrationMessage(''), 2000);
   };
@@ -943,7 +958,7 @@ export default function Diagnostic() {
 
   // 重置為預設值
   const resetToDefaults = () => {
-    setSilenceMax(5);
+    setSilenceAvg(5);
     setSpeechMax(40);
     setThreshold(22);
     setSentenceEndWait(500);
@@ -1088,11 +1103,11 @@ export default function Diagnostic() {
           {/* 四個可調整的參數輸入 */}
           <div className="calibration-inputs">
             <div className="input-group">
-              <label>靜音最大值</label>
+              <label>靜音平均值</label>
               <input
                 type="number"
-                value={silenceMax}
-                onChange={(e) => setSilenceMax(Math.max(0, parseInt(e.target.value) || 0))}
+                value={silenceAvg}
+                onChange={(e) => setSilenceAvg(Math.max(0, parseInt(e.target.value) || 0))}
                 min="0"
                 max="100"
               />
@@ -1185,7 +1200,7 @@ export default function Diagnostic() {
             />
             <div className="chart-legend">
               <span className="legend-item">
-                <span className="legend-line silence"></span>靜音最大值（藍）
+                <span className="legend-line silence"></span>靜音平均值（藍）
               </span>
               <span className="legend-item">
                 <span className="legend-line speech"></span>說話最大值（綠）
