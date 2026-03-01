@@ -565,6 +565,75 @@
   margin-left: 12px;
 }
 
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* TTS 按鈕 */
+.tts-btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+  min-width: 40px;
+}
+
+.tts-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #4CAF50;
+}
+
+.tts-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tts-btn.playing {
+  background: rgba(76, 175, 80, 0.2);
+  border-color: #4CAF50;
+  animation: tts-pulse 0.5s infinite;
+}
+
+.tts-btn.small {
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  min-width: 32px;
+}
+
+@keyframes tts-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* TTS 錯誤訊息 */
+.tts-error {
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: rgba(244, 67, 54, 0.2);
+  border: 1px solid #F44336;
+  border-radius: 6px;
+  color: #F44336;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.tts-error button {
+  background: none;
+  border: none;
+  color: #F44336;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
 /* 響應式 */
 @media (max-width: 600px) {
   .diagnostic-content {

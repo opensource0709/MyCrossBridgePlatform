@@ -35,6 +35,10 @@ export default function Diagnostic() {
   const [translationResult, setTranslationResult] = useState(null);
   const [translationHistory, setTranslationHistory] = useState([]);
 
+  // TTS 狀態
+  const [playingTtsId, setPlayingTtsId] = useState(null); // 正在播放的項目 ID
+  const [ttsError, setTtsError] = useState('');
+
   // Refs
   const videoRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -466,6 +470,68 @@ export default function Diagnostic() {
     setTranslationResult(null);
   };
 
+  // 播放 TTS 語音
+  const playTts = async (text, targetLang, itemId = 'current') => {
+    if (playingTtsId) return; // 已經在播放中
+
+    setPlayingTtsId(itemId);
+    setTtsError('');
+
+    try {
+      const response = await fetch(`${API_BASE}/api/diagnostic/tts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text,
+          language: targetLang,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'TTS 失敗');
+      }
+
+      // 播放音訊
+      const audioData = `data:audio/mp3;base64,${result.audio}`;
+      const audio = new Audio(audioData);
+
+      // 設定輸出裝置（如果支援）
+      if (selectedSpeaker && audio.setSinkId) {
+        try {
+          await audio.setSinkId(selectedSpeaker);
+        } catch (e) {
+          console.warn('無法設定輸出裝置:', e);
+        }
+      }
+
+      audio.onended = () => {
+        setPlayingTtsId(null);
+      };
+
+      audio.onerror = (e) => {
+        console.error('音訊播放錯誤:', e);
+        setTtsError('音訊播放失敗');
+        setPlayingTtsId(null);
+      };
+
+      await audio.play();
+
+    } catch (err) {
+      console.error('TTS 錯誤:', err);
+      setTtsError(err.message || 'TTS 失敗');
+      setPlayingTtsId(null);
+    }
+  };
+
+  // 取得翻譯後的目標語言
+  const getTargetLang = (dir) => {
+    return dir === 'zh-to-vi' ? 'vi' : 'zh';
+  };
+
   return (
     <div className="diagnostic-page">
       <header className="diagnostic-header">
@@ -634,6 +700,14 @@ export default function Diagnostic() {
               : '按住按鈕說越南文，放開後會翻譯成中文'}
           </p>
 
+          {/* TTS 錯誤訊息 */}
+          {ttsError && (
+            <div className="tts-error">
+              {ttsError}
+              <button onClick={() => setTtsError('')}>×</button>
+            </div>
+          )}
+
           {/* 翻譯結果顯示 */}
           {translationResult && (
             <div className={`translation-result ${translationResult.success ? 'success' : 'error'}`}>
@@ -646,6 +720,18 @@ export default function Diagnostic() {
                   <div className="result-row">
                     <span className="result-label">翻譯：</span>
                     <span className="result-text translated">{translationResult.translatedText}</span>
+                    <button
+                      className={`tts-btn ${playingTtsId === 'current' ? 'playing' : ''}`}
+                      onClick={() => playTts(
+                        translationResult.translatedText,
+                        getTargetLang(translationResult.direction),
+                        'current'
+                      )}
+                      disabled={!!playingTtsId}
+                      title="播放翻譯語音"
+                    >
+                      {playingTtsId === 'current' ? '...' : '🔊'}
+                    </button>
                   </div>
                   <div className="latency-stats">
                     <div className="latency-item">
@@ -683,7 +769,21 @@ export default function Diagnostic() {
                       <span className="history-arrow">→</span>
                       <span className="history-translated">{item.translatedText}</span>
                     </div>
-                    <span className="history-latency">{item.timings?.total || 0}ms</span>
+                    <div className="history-actions">
+                      <button
+                        className={`tts-btn small ${playingTtsId === `history-${index}` ? 'playing' : ''}`}
+                        onClick={() => playTts(
+                          item.translatedText,
+                          getTargetLang(item.direction),
+                          `history-${index}`
+                        )}
+                        disabled={!!playingTtsId}
+                        title="播放翻譯語音"
+                      >
+                        {playingTtsId === `history-${index}` ? '...' : '🔊'}
+                      </button>
+                      <span className="history-latency">{item.timings?.total || 0}ms</span>
+                    </div>
                   </div>
                 ))}
               </div>

@@ -4,6 +4,7 @@
 import express from 'express';
 import { speechToTextFromBuffer } from '../../pipeline/stt.js';
 import { translate } from '../../pipeline/translate.js';
+import { textToSpeech } from '../../pipeline/tts.js';
 
 const router = express.Router();
 
@@ -92,6 +93,54 @@ router.post('/translate', async (req, res) => {
 });
 
 /**
+ * POST /api/diagnostic/tts
+ * 文字轉語音（ElevenLabs）
+ *
+ * Body:
+ * - text: 要轉換的文字
+ * - language: 'vi' | 'zh'
+ */
+router.post('/tts', async (req, res) => {
+  const startTime = Date.now();
+
+  try {
+    const { text, language = 'vi' } = req.body;
+
+    if (!text || text.trim() === '') {
+      return res.status(400).json({ error: '缺少文字' });
+    }
+
+    // 驗證語言
+    if (!['vi', 'zh'].includes(language)) {
+      return res.status(400).json({ error: '不支援的語言' });
+    }
+
+    console.log('[TTS] 開始合成:', text.substring(0, 50), '語言:', language);
+
+    const result = await textToSpeech(text, language);
+    const elapsed = Date.now() - startTime;
+
+    console.log('[TTS] 合成完成, 耗時:', elapsed, 'ms, 大小:', result.buffer.length);
+
+    // 回傳 base64 編碼的音訊
+    res.json({
+      success: true,
+      audio: result.buffer.toString('base64'),
+      format: 'mp3',
+      elapsed,
+      firstChunkLatency: result.firstChunkLatency,
+    });
+
+  } catch (error) {
+    console.error('[TTS] 錯誤:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'TTS 合成失敗',
+    });
+  }
+});
+
+/**
  * GET /api/diagnostic/health
  * 檢查診斷 API 狀態
  */
@@ -101,6 +150,7 @@ router.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     endpoints: [
       'POST /api/diagnostic/translate',
+      'POST /api/diagnostic/tts',
     ],
   });
 });
