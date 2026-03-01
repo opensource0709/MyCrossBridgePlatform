@@ -1479,7 +1479,136 @@
   margin: 0;
 }
 
-/* 響應式 */
+/* ===== 桌機 Layout（寬度 > 1024px）===== */
+@media (min-width: 1025px) {
+  .diagnostic-content {
+    display: grid;
+    grid-template-columns: 2fr 3fr; /* 40% / 60% */
+    gap: 24px;
+    max-width: 1400px;
+    align-items: start;
+  }
+
+  /* 左欄 - 攝影機 */
+  .diagnostic-content > section:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  /* 左欄 - 麥克風 */
+  .diagnostic-content > section:nth-child(2) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  /* 左欄 - 喇叭 */
+  .diagnostic-content > section:nth-child(6) {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  /* 右欄 - 音訊視覺化 */
+  .diagnostic-content > .visualization-section {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  /* 右欄 - 校準區塊 */
+  .diagnostic-content > .calibration-section-v2 {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  /* 右欄 - 翻譯測試 */
+  .diagnostic-content > .translation-section {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  /* 狀態摘要 - 全寬 */
+  .diagnostic-content > .status-summary {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
+}
+
+/* ===== 平板 Layout（768px ~ 1024px）===== */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .diagnostic-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* 50% / 50% */
+    gap: 20px;
+    max-width: 100%;
+  }
+
+  /* 上半部 - 攝影機 + 麥克風 並排 */
+  .diagnostic-content > section:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .diagnostic-content > section:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  /* 下半部 - 其他區塊全寬 */
+  .diagnostic-content > .visualization-section {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .diagnostic-content > .calibration-section-v2 {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  .diagnostic-content > .translation-section {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
+
+  .diagnostic-content > section:nth-child(6) {
+    grid-column: 1 / -1;
+    grid-row: 5;
+  }
+
+  .diagnostic-content > .status-summary {
+    grid-column: 1 / -1;
+    grid-row: 6;
+  }
+
+  /* 平板音量統計橫向顯示 */
+  .volume-stats {
+    flex-direction: row;
+  }
+
+  .stat-item {
+    flex-direction: column;
+  }
+
+  /* 平板校準輸入橫向 */
+  .calibration-inputs {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .input-group.sentence-wait {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ===== 手機 Layout（< 768px）===== */
+@media (max-width: 767px) {
+  .diagnostic-content {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    max-width: 100%;
+    padding: 16px;
+  }
+}
+
+/* 響應式 - 小螢幕細節調整 */
 @media (max-width: 600px) {
   .diagnostic-content {
     padding: 16px;
