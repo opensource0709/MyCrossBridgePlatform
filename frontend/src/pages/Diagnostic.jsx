@@ -47,13 +47,18 @@ export default function Diagnostic() {
   const [calibrationProgress, setCalibrationProgress] = useState(0); // 0-100
   const [calibrationMessage, setCalibrationMessage] = useState('');
 
-  // 三個可手動調整的校準值
-  const [silenceAvg, setSilenceAvg] = useState(5);   // 靜音平均值
-  const [speechAvg, setSpeechAvg] = useState(40);    // 說話平均值
-  const [threshold, setThreshold] = useState(22);     // 判斷門檻
+  // 四個可手動調整的校準值
+  const [silenceMax, setSilenceMax] = useState(5);     // 靜音最大值
+  const [speechMax, setSpeechMax] = useState(40);      // 說話最大值
+  const [threshold, setThreshold] = useState(22);       // 判斷門檻
+  const [sentenceEndWait, setSentenceEndWait] = useState(500); // 句尾等待時間 (ms)
 
   // 即時說話狀態
   const [isSpeakingNow, setIsSpeakingNow] = useState(false);
+
+  // 曲線圖狀態
+  const [isChartPaused, setIsChartPaused] = useState(false); // 曲線圖是否暫停
+  const [hoverInfo, setHoverInfo] = useState(null); // 滑鼠懸停資訊 { x, time, volume }
 
   // Refs
   const videoRef = useRef(null);
@@ -79,9 +84,10 @@ export default function Diagnostic() {
     if (saved) {
       try {
         const data = JSON.parse(saved);
-        setSilenceAvg(data.silenceAvg || 5);
-        setSpeechAvg(data.speechAvg || 40);
+        setSilenceMax(data.silenceMax || 5);
+        setSpeechMax(data.speechMax || 40);
         setThreshold(data.threshold || 22);
+        setSentenceEndWait(data.sentenceEndWait || 500);
         console.log('[校準] 載入已儲存的校準資料:', data);
       } catch (e) {
         console.error('[校準] 無法解析已儲存的校準資料');
@@ -89,11 +95,11 @@ export default function Diagnostic() {
     }
   }, []);
 
-  // 自動更新判斷門檻（當靜音或說話平均值改變時）
+  // 自動更新判斷門檻（當靜音或說話最大值改變時）
   const updateThresholdAuto = useCallback(() => {
-    const newThreshold = Math.round((silenceAvg + speechAvg) / 2);
+    const newThreshold = Math.round((silenceMax + speechMax) / 2);
     setThreshold(newThreshold);
-  }, [silenceAvg, speechAvg]);
+  }, [silenceMax, speechMax]);
 
   // 列出所有裝置
   const enumerateDevices = useCallback(async () => {
@@ -579,6 +585,13 @@ export default function Diagnostic() {
 
   // ========== 校準功能（新版簡化設計）==========
 
+  // 保存曲線圖狀態
+  const chartStateRef = useRef({
+    padding: { top: 20, right: 80, bottom: 30, left: 50 },
+    maxVolume: 100,
+    tenSecondsAgo: Date.now() - 10000,
+  });
+
   // 繪製校準曲線圖（持續執行）
   const drawCalibrationChart = useCallback(() => {
     const canvas = calibrationChartRef.current;
@@ -587,7 +600,7 @@ export default function Diagnostic() {
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
     const height = canvas.height;
-    const padding = { top: 20, right: 80, bottom: 30, left: 50 };
+    const padding = chartStateRef.current.padding;
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
 
@@ -596,12 +609,14 @@ export default function Diagnostic() {
     const now = Date.now();
     const speaking = volume > threshold;
 
-    // 加入歷史
-    volumeHistoryRef.current.push({ time: now, volume, speaking });
-
-    // 只保留最近 10 秒
-    const tenSecondsAgo = now - 10000;
-    volumeHistoryRef.current = volumeHistoryRef.current.filter(d => d.time > tenSecondsAgo);
+    // 只在非暫停時加入歷史和更新
+    if (!isChartPaused) {
+      volumeHistoryRef.current.push({ time: now, volume, speaking });
+      // 只保留最近 10 秒
+      const tenSecondsAgo = now - 10000;
+      volumeHistoryRef.current = volumeHistoryRef.current.filter(d => d.time > tenSecondsAgo);
+      chartStateRef.current.tenSecondsAgo = tenSecondsAgo;
+    }
 
     // 更新說話狀態
     setIsSpeakingNow(speaking);
@@ -611,7 +626,8 @@ export default function Diagnostic() {
     ctx.fillRect(0, 0, width, height);
 
     // 計算 Y 軸範圍
-    const maxVolume = Math.max(100, speechAvg * 1.5, ...volumeHistoryRef.current.map(d => d.volume)) * 1.2;
+    const maxVolume = Math.max(100, speechMax * 1.5, ...volumeHistoryRef.current.map(d => d.volume)) * 1.2;
+    chartStateRef.current.maxVolume = maxVolume;
 
     // 繪製 Y 軸刻度
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
@@ -659,12 +675,14 @@ export default function Diagnostic() {
       ctx.fillText(`${label}: ${value}`, padding.left + chartWidth + 5, y + 4);
     };
 
-    // 藍線 = 靜音平均
-    drawHorizontalLine(silenceAvg, '#2196F3', '靜音', true);
-    // 綠線 = 說話平均
-    drawHorizontalLine(speechAvg, '#4CAF50', '說話', true);
+    // 藍線 = 靜音最大值
+    drawHorizontalLine(silenceMax, '#2196F3', '靜音', true);
+    // 綠線 = 說話最大值
+    drawHorizontalLine(speechMax, '#4CAF50', '說話', true);
     // 紅線 = 判斷門檻（最重要，實線）
     drawHorizontalLine(threshold, '#F44336', '門檻', false);
+
+    const tenSecondsAgo = chartStateRef.current.tenSecondsAgo;
 
     // 繪製音量曲線
     if (volumeHistoryRef.current.length > 1) {
@@ -694,19 +712,87 @@ export default function Diagnostic() {
       });
       ctx.stroke();
 
-      // 目前點
-      const lastPoint = volumeHistoryRef.current[volumeHistoryRef.current.length - 1];
-      const lastX = padding.left + chartWidth;
-      const lastY = padding.top + chartHeight - (Math.min(lastPoint.volume, maxVolume) / maxVolume) * chartHeight;
+      // 目前點（只在非暫停時顯示）
+      if (!isChartPaused) {
+        const lastPoint = volumeHistoryRef.current[volumeHistoryRef.current.length - 1];
+        const lastX = padding.left + chartWidth;
+        const lastY = padding.top + chartHeight - (Math.min(lastPoint.volume, maxVolume) / maxVolume) * chartHeight;
 
+        ctx.beginPath();
+        ctx.arc(lastX, lastY, 6, 0, Math.PI * 2);
+        ctx.fillStyle = lastPoint.speaking ? '#4CAF50' : 'rgba(255, 255, 255, 0.6)';
+        ctx.fill();
+      }
+    }
+
+    // 繪製滑鼠懸停資訊
+    if (hoverInfo && volumeHistoryRef.current.length > 0) {
+      const { x: hoverX } = hoverInfo;
+
+      // 繪製垂直虛線
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
       ctx.beginPath();
-      ctx.arc(lastX, lastY, 6, 0, Math.PI * 2);
-      ctx.fillStyle = lastPoint.speaking ? '#4CAF50' : 'rgba(255, 255, 255, 0.6)';
+      ctx.moveTo(hoverX, padding.top);
+      ctx.lineTo(hoverX, padding.top + chartHeight);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 找到最接近的資料點
+      const relativeX = (hoverX - padding.left) / chartWidth;
+      const targetTime = tenSecondsAgo + relativeX * 10000;
+      let closestPoint = volumeHistoryRef.current[0];
+      let minDiff = Math.abs(closestPoint.time - targetTime);
+
+      for (const point of volumeHistoryRef.current) {
+        const diff = Math.abs(point.time - targetTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestPoint = point;
+        }
+      }
+
+      // 計算時間差
+      const secondsAgo = Math.round((now - closestPoint.time) / 1000 * 10) / 10;
+
+      // 繪製資訊框
+      const infoText = `${secondsAgo}秒前: ${Math.round(closestPoint.volume)}`;
+      ctx.font = '12px monospace';
+      const textWidth = ctx.measureText(infoText).width + 16;
+      const infoX = Math.min(hoverX + 10, width - textWidth - 10);
+      const infoY = padding.top + 10;
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.fillRect(infoX, infoY, textWidth, 24);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.strokeRect(infoX, infoY, textWidth, 24);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'left';
+      ctx.fillText(infoText, infoX + 8, infoY + 16);
+
+      // 標記該點
+      const pointY = padding.top + chartHeight - (Math.min(closestPoint.volume, maxVolume) / maxVolume) * chartHeight;
+      const pointX = padding.left + ((closestPoint.time - tenSecondsAgo) / 10000) * chartWidth;
+      ctx.beginPath();
+      ctx.arc(pointX, pointY, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFC107';
       ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // 暫停時顯示暫停標記
+    if (isChartPaused) {
+      ctx.fillStyle = 'rgba(255, 152, 0, 0.9)';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('⏸ 已暫停', width - 10, 15);
     }
 
     calibrationChartAnimationRef.current = requestAnimationFrame(drawCalibrationChart);
-  }, [silenceAvg, speechAvg, threshold]);
+  }, [silenceMax, speechMax, threshold, isChartPaused, hoverInfo]);
 
   // 啟動校準曲線圖
   useEffect(() => {
@@ -719,6 +805,34 @@ export default function Diagnostic() {
       }
     };
   }, [drawCalibrationChart]);
+
+  // 處理滑鼠在曲線圖上移動
+  const handleChartMouseMove = useCallback((e) => {
+    const canvas = calibrationChartRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const x = (e.clientX - rect.left) * scaleX;
+    const padding = chartStateRef.current.padding;
+
+    // 只在圖表區域內顯示
+    if (x >= padding.left && x <= canvas.width - padding.right) {
+      setHoverInfo({ x });
+    } else {
+      setHoverInfo(null);
+    }
+  }, []);
+
+  // 滑鼠離開曲線圖
+  const handleChartMouseLeave = useCallback(() => {
+    setHoverInfo(null);
+  }, []);
+
+  // 切換曲線圖暫停/繼續
+  const toggleChartPause = () => {
+    setIsChartPaused(prev => !prev);
+  };
 
   // 開始自動校準
   const startAutoCalibration = () => {
@@ -743,19 +857,19 @@ export default function Diagnostic() {
       if (elapsed >= duration) {
         clearInterval(calibrationIntervalRef.current);
 
-        // 計算靜音平均
-        const avg = Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
-        setSilenceAvg(avg);
-        console.log('[校準] 靜音採樣完成, 平均:', avg);
+        // 計算靜音最大值
+        const maxVal = Math.round(Math.max(...samples));
+        setSilenceMax(maxVal);
+        console.log('[校準] 靜音採樣完成, 最大值:', maxVal);
 
-        // 進入說話採樣
-        startSpeechSampling();
+        // 進入說話採樣，並傳入靜音最大值
+        startSpeechSampling(maxVal);
       }
     }, interval);
   };
 
   // 說話採樣
-  const startSpeechSampling = () => {
+  const startSpeechSampling = (silenceMaxVal) => {
     setCalibrationStep(2);
     setCalibrationProgress(0);
     setCalibrationMessage('請正常說話 5 秒（例如數 1 到 10）...');
@@ -776,17 +890,15 @@ export default function Diagnostic() {
       if (elapsed >= duration) {
         clearInterval(calibrationIntervalRef.current);
 
-        // 計算說話平均（取較高的值）
-        const sorted = [...samples].sort((a, b) => b - a);
-        const top60Percent = sorted.slice(0, Math.floor(sorted.length * 0.6));
-        const avg = Math.round(top60Percent.reduce((a, b) => a + b, 0) / top60Percent.length);
-        setSpeechAvg(avg);
+        // 計算說話最大值
+        const maxVal = Math.round(Math.max(...samples));
+        setSpeechMax(maxVal);
 
-        // 自動計算門檻
-        const newThreshold = Math.round((silenceAvg + avg) / 2);
+        // 自動計算門檻 = (靜音最大值 + 說話最大值) / 2
+        const newThreshold = Math.round((silenceMaxVal + maxVal) / 2);
         setThreshold(newThreshold);
 
-        console.log('[校準] 說話採樣完成, 平均:', avg, '門檻:', newThreshold);
+        console.log('[校準] 說話採樣完成, 最大值:', maxVal, '門檻:', newThreshold);
 
         // 完成
         setCalibrationStep(0);
@@ -794,7 +906,7 @@ export default function Diagnostic() {
         setCalibrationMessage('校準完成！');
 
         // 自動儲存
-        saveCalibrationData(silenceAvg, avg, newThreshold);
+        saveCalibrationData(silenceMaxVal, maxVal, newThreshold);
       }
     }, interval);
   };
@@ -802,9 +914,10 @@ export default function Diagnostic() {
   // 儲存校準資料
   const saveCalibrationData = (silence, speech, thresh) => {
     const data = {
-      silenceAvg: silence,
-      speechAvg: speech,
+      silenceMax: silence,
+      speechMax: speech,
       threshold: thresh,
+      sentenceEndWait: sentenceEndWait,
       calibratedAt: new Date().toISOString(),
     };
     localStorage.setItem(CALIBRATION_KEY, JSON.stringify(data));
@@ -813,7 +926,7 @@ export default function Diagnostic() {
 
   // 手動儲存
   const saveCurrentCalibration = () => {
-    saveCalibrationData(silenceAvg, speechAvg, threshold);
+    saveCalibrationData(silenceMax, speechMax, threshold);
     setCalibrationMessage('已儲存！');
     setTimeout(() => setCalibrationMessage(''), 2000);
   };
@@ -830,9 +943,10 @@ export default function Diagnostic() {
 
   // 重置為預設值
   const resetToDefaults = () => {
-    setSilenceAvg(5);
-    setSpeechAvg(40);
+    setSilenceMax(5);
+    setSpeechMax(40);
     setThreshold(22);
+    setSentenceEndWait(500);
     localStorage.removeItem(CALIBRATION_KEY);
     setCalibrationMessage('已重置為預設值');
     setTimeout(() => setCalibrationMessage(''), 2000);
@@ -971,25 +1085,25 @@ export default function Diagnostic() {
             <div className="volume-label-big">即時音量</div>
           </div>
 
-          {/* 三個可調整的參數輸入 */}
+          {/* 四個可調整的參數輸入 */}
           <div className="calibration-inputs">
             <div className="input-group">
-              <label>靜音平均</label>
+              <label>靜音最大值</label>
               <input
                 type="number"
-                value={silenceAvg}
-                onChange={(e) => setSilenceAvg(Math.max(0, parseInt(e.target.value) || 0))}
+                value={silenceMax}
+                onChange={(e) => setSilenceMax(Math.max(0, parseInt(e.target.value) || 0))}
                 min="0"
                 max="100"
               />
               <div className="input-color-indicator silence"></div>
             </div>
             <div className="input-group">
-              <label>說話平均</label>
+              <label>說話最大值</label>
               <input
                 type="number"
-                value={speechAvg}
-                onChange={(e) => setSpeechAvg(Math.max(0, parseInt(e.target.value) || 0))}
+                value={speechMax}
+                onChange={(e) => setSpeechMax(Math.max(0, parseInt(e.target.value) || 0))}
                 min="0"
                 max="200"
               />
@@ -1005,6 +1119,21 @@ export default function Diagnostic() {
                 max="150"
               />
               <div className="input-color-indicator threshold"></div>
+            </div>
+            <div className="input-group sentence-wait">
+              <label>句尾等待時間</label>
+              <div className="input-with-unit">
+                <input
+                  type="number"
+                  value={sentenceEndWait}
+                  onChange={(e) => setSentenceEndWait(Math.max(100, parseInt(e.target.value) || 500))}
+                  min="100"
+                  max="3000"
+                  step="100"
+                />
+                <span className="input-unit">ms</span>
+              </div>
+              <div className="input-hint">說話停止後，等待這段時間才判定為句子結束</div>
             </div>
           </div>
 
@@ -1034,8 +1163,16 @@ export default function Diagnostic() {
           <div className="calibration-chart-container">
             <div className="chart-header">
               <span className="chart-title">即時音量曲線（最近 10 秒）</span>
-              <div className={`speaking-indicator ${isSpeakingNow ? 'speaking' : 'silent'}`}>
-                {isSpeakingNow ? '● 說話中' : '○ 靜音'}
+              <div className="chart-controls">
+                <button
+                  className={`chart-pause-btn ${isChartPaused ? 'paused' : ''}`}
+                  onClick={toggleChartPause}
+                >
+                  {isChartPaused ? '▶ 繼續運作' : '⏸ 停止移動'}
+                </button>
+                <div className={`speaking-indicator ${isSpeakingNow ? 'speaking' : 'silent'}`}>
+                  {isSpeakingNow ? '● 說話中' : '○ 靜音'}
+                </div>
               </div>
             </div>
             <canvas
@@ -1043,13 +1180,15 @@ export default function Diagnostic() {
               width={700}
               height={200}
               className="calibration-chart"
+              onMouseMove={handleChartMouseMove}
+              onMouseLeave={handleChartMouseLeave}
             />
             <div className="chart-legend">
               <span className="legend-item">
-                <span className="legend-line silence"></span>靜音平均（藍）
+                <span className="legend-line silence"></span>靜音最大值（藍）
               </span>
               <span className="legend-item">
-                <span className="legend-line speech"></span>說話平均（綠）
+                <span className="legend-line speech"></span>說話最大值（綠）
               </span>
               <span className="legend-item">
                 <span className="legend-line threshold"></span>判斷門檻（紅）

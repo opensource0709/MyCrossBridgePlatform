@@ -662,7 +662,7 @@
   margin-top: 8px;
 }
 
-/* 三個輸入框 */
+/* 四個輸入框 */
 .calibration-inputs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -675,6 +675,14 @@
   flex-direction: column;
   gap: 8px;
   position: relative;
+}
+
+.input-group.sentence-wait {
+  grid-column: 1 / -1; /* 跨越整行 */
+  background: rgba(0, 0, 0, 0.2);
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .input-group label {
@@ -698,6 +706,29 @@
 .input-group input:focus {
   outline: none;
   border-color: #9C27B0;
+}
+
+/* 帶單位的輸入框 */
+.input-with-unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-with-unit input {
+  max-width: 150px;
+}
+
+.input-unit {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.input-hint {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 4px;
 }
 
 .input-color-indicator {
@@ -753,6 +784,40 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chart-pause-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chart-pause-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.chart-pause-btn.paused {
+  background: rgba(255, 152, 0, 0.2);
+  border-color: #FF9800;
+  color: #FF9800;
+}
+
+.chart-pause-btn.paused:hover {
+  background: rgba(255, 152, 0, 0.3);
 }
 
 .calibration-chart {
@@ -760,6 +825,7 @@
   height: auto;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: crosshair;
 }
 
 /* 說話指示器 */
@@ -1310,6 +1376,14 @@
     grid-template-columns: 1fr;
   }
 
+  .input-group.sentence-wait {
+    grid-column: 1;
+  }
+
+  .input-with-unit {
+    flex-direction: row;
+  }
+
   .volume-number {
     font-size: 3rem;
   }
@@ -1317,6 +1391,11 @@
   .chart-header {
     flex-direction: column;
     gap: 8px;
+  }
+
+  .chart-controls {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .chart-legend {
