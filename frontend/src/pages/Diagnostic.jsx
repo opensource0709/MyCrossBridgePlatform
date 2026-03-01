@@ -86,13 +86,11 @@ export default function Diagnostic() {
   const calibrationChartAnimationRef = useRef(null); // 校準曲線圖動畫
 
   // 連續模式 VAD 相關 refs
-  const audioQueueRef = useRef([]); // Queue 緩衝：保留最近 300ms 的音訊
   const continuousRecorderRef = useRef(null); // 連續模式的 MediaRecorder
   const continuousChunksRef = useRef([]); // 連續模式錄音的音訊片段
   const vadSpeakingRef = useRef(false); // VAD 說話狀態
   const vadEndTimeRef = useRef(0); // VAD 說話結束時間
   const vadCheckIntervalRef = useRef(null); // VAD 檢查間隔
-  const queueRecorderRef = useRef(null); // Queue 緩衝用的 MediaRecorder
 
   // 載入已儲存的校準資料
   useEffect(() => {
@@ -622,11 +620,7 @@ export default function Diagnostic() {
     setContinuousStatus('listening');
     vadSpeakingRef.current = false;
     vadEndTimeRef.current = 0;
-    audioQueueRef.current = [];
     continuousChunksRef.current = [];
-
-    // 啟動 Queue 緩衝錄音（持續錄音，保留最近 300ms）
-    startQueueRecording();
 
     // 啟動 VAD 檢查
     vadCheckIntervalRef.current = setInterval(() => {
@@ -647,52 +641,12 @@ export default function Diagnostic() {
       vadCheckIntervalRef.current = null;
     }
 
-    // 停止 Queue 錄音
-    if (queueRecorderRef.current && queueRecorderRef.current.state !== 'inactive') {
-      queueRecorderRef.current.stop();
-    }
-
     // 停止連續錄音
     if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
       continuousRecorderRef.current.stop();
     }
 
     vadSpeakingRef.current = false;
-  }, []);
-
-  // 啟動 Queue 緩衝錄音
-  const startQueueRecording = useCallback(() => {
-    if (!micStreamRef.current) return;
-
-    try {
-      const recorder = new MediaRecorder(micStreamRef.current, {
-        mimeType: 'audio/webm;codecs=opus',
-      });
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          // 加入 Queue
-          audioQueueRef.current.push({
-            data: event.data,
-            timestamp: Date.now(),
-          });
-
-          // 只保留最近 300ms 的音訊
-          const cutoffTime = Date.now() - 300;
-          audioQueueRef.current = audioQueueRef.current.filter(
-            item => item.timestamp > cutoffTime
-          );
-        }
-      };
-
-      // 每 100ms 產生一個音訊片段
-      recorder.start(100);
-      queueRecorderRef.current = recorder;
-      console.log('[VAD] Queue 緩衝錄音啟動');
-
-    } catch (err) {
-      console.error('[VAD] Queue 錄音啟動失敗:', err);
-    }
   }, []);
 
   // 檢查 VAD 狀態
@@ -724,15 +678,12 @@ export default function Diagnostic() {
     }
   }, [threshold, sentenceEndWait]);
 
-  // 開始連續模式錄音
+  // 開始連續模式錄音（使用與按鈕模式相同的方式）
   const startContinuousRecording = useCallback(() => {
     if (!micStreamRef.current) return;
 
     try {
-      // 取出 Queue 中的緩衝音訊（說話起點前的聲音）
-      const queuedChunks = audioQueueRef.current.map(item => item.data);
-      continuousChunksRef.current = [...queuedChunks];
-      console.log('[VAD] 取出 Queue 緩衝:', queuedChunks.length, '個片段');
+      continuousChunksRef.current = [];
 
       const recorder = new MediaRecorder(micStreamRef.current, {
         mimeType: 'audio/webm;codecs=opus',
@@ -744,7 +695,8 @@ export default function Diagnostic() {
         }
       };
 
-      recorder.start(100);
+      // 使用與按鈕模式相同的錄音方式（不分段，等 stop 時一次性產生完整 webm）
+      recorder.start();
       continuousRecorderRef.current = recorder;
       console.log('[VAD] 連續錄音開始');
 
@@ -753,16 +705,24 @@ export default function Diagnostic() {
     }
   }, []);
 
-  // 停止連續錄音並處理
+  // 停止連續錄音並處理（使用與按鈕模式相同的方式）
   const stopContinuousRecordingAndProcess = useCallback(async () => {
     setContinuousStatus('processing');
 
-    if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
-      continuousRecorderRef.current.stop();
+    const recorder = continuousRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') {
+      console.log('[VAD] 沒有進行中的錄音');
+      setContinuousStatus('listening');
+      return;
     }
 
-    // 等待最後的資料
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // 等待 onstop 事件，確保所有資料都已收集
+    await new Promise((resolve) => {
+      recorder.onstop = () => {
+        resolve();
+      };
+      recorder.stop();
+    });
 
     const chunks = continuousChunksRef.current;
     if (chunks.length === 0) {
@@ -771,24 +731,24 @@ export default function Diagnostic() {
       return;
     }
 
-    console.log('[VAD] 處理錄音, 片段數:', chunks.length);
+    const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+    console.log('[VAD] 處理錄音, 片段數:', chunks.length, ', 大小:', audioBlob.size, 'bytes');
+
+    if (audioBlob.size < 1000) {
+      console.log('[VAD] 錄音太短，跳過');
+      setContinuousStatus('listening');
+      continuousChunksRef.current = [];
+      return;
+    }
 
     try {
-      const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-
-      if (audioBlob.size < 1000) {
-        console.log('[VAD] 錄音太短，跳過');
-        setContinuousStatus('listening');
-        continuousChunksRef.current = [];
-        return;
-      }
-
       // 轉換為 base64
       const reader = new FileReader();
       reader.readAsDataURL(audioBlob);
 
       reader.onloadend = async () => {
         const base64Audio = reader.result.split(',')[1];
+        console.log('[VAD] 送出音訊, base64 長度:', base64Audio.length);
 
         try {
           const response = await fetch(`${API_BASE}/api/diagnostic/translate`, {
@@ -855,9 +815,6 @@ export default function Diagnostic() {
     return () => {
       if (vadCheckIntervalRef.current) {
         clearInterval(vadCheckIntervalRef.current);
-      }
-      if (queueRecorderRef.current && queueRecorderRef.current.state !== 'inactive') {
-        queueRecorderRef.current.stop();
       }
       if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
         continuousRecorderRef.current.stop();
