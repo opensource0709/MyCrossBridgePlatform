@@ -38,6 +38,12 @@ export default function Diagnostic() {
   const [translationResult, setTranslationResult] = useState(null);
   const [translationHistory, setTranslationHistory] = useState([]);
 
+  // 連續模式狀態
+  const [translationMode, setTranslationMode] = useState('button'); // 'button' | 'continuous'
+  const [continuousStatus, setContinuousStatus] = useState('idle'); // 'idle' | 'listening' | 'speaking' | 'processing'
+  const [isContinuousActive, setIsContinuousActive] = useState(false); // 連續模式是否啟動
+  const [isCalibrated, setIsCalibrated] = useState(false); // 是否已校準
+
   // TTS 狀態
   const [playingTtsId, setPlayingTtsId] = useState(null); // 正在播放的項目 ID
   const [ttsError, setTtsError] = useState('');
@@ -79,6 +85,15 @@ export default function Diagnostic() {
   const calibrationChartRef = useRef(null); // 校準曲線圖 canvas
   const calibrationChartAnimationRef = useRef(null); // 校準曲線圖動畫
 
+  // 連續模式 VAD 相關 refs
+  const audioQueueRef = useRef([]); // Queue 緩衝：保留最近 300ms 的音訊
+  const continuousRecorderRef = useRef(null); // 連續模式的 MediaRecorder
+  const continuousChunksRef = useRef([]); // 連續模式錄音的音訊片段
+  const vadSpeakingRef = useRef(false); // VAD 說話狀態
+  const vadEndTimeRef = useRef(0); // VAD 說話結束時間
+  const vadCheckIntervalRef = useRef(null); // VAD 檢查間隔
+  const queueRecorderRef = useRef(null); // Queue 緩衝用的 MediaRecorder
+
   // 載入已儲存的校準資料
   useEffect(() => {
     const saved = localStorage.getItem(CALIBRATION_KEY);
@@ -89,10 +104,14 @@ export default function Diagnostic() {
         setSpeechMax(data.speechMax || 40);
         setThreshold(data.threshold || 22);
         setSentenceEndWait(data.sentenceEndWait || 500);
+        setIsCalibrated(true);
         console.log('[校準] 載入已儲存的校準資料:', data);
       } catch (e) {
         console.error('[校準] 無法解析已儲存的校準資料');
+        setIsCalibrated(false);
       }
+    } else {
+      setIsCalibrated(false);
     }
   }, []);
 
@@ -584,6 +603,268 @@ export default function Diagnostic() {
     return dir === 'zh-to-vi' ? 'vi' : 'zh';
   };
 
+  // ========== 連續模式 VAD 功能 ==========
+
+  // 啟動連續模式
+  const startContinuousMode = useCallback(() => {
+    if (!micStreamRef.current) {
+      setError('麥克風未啟動');
+      return;
+    }
+
+    if (!isCalibrated) {
+      setError('請先進行校準');
+      return;
+    }
+
+    console.log('[VAD] 啟動連續模式');
+    setIsContinuousActive(true);
+    setContinuousStatus('listening');
+    vadSpeakingRef.current = false;
+    vadEndTimeRef.current = 0;
+    audioQueueRef.current = [];
+    continuousChunksRef.current = [];
+
+    // 啟動 Queue 緩衝錄音（持續錄音，保留最近 300ms）
+    startQueueRecording();
+
+    // 啟動 VAD 檢查
+    vadCheckIntervalRef.current = setInterval(() => {
+      checkVADStatus();
+    }, 50); // 每 50ms 檢查一次
+
+  }, [isCalibrated]);
+
+  // 停止連續模式
+  const stopContinuousMode = useCallback(() => {
+    console.log('[VAD] 停止連續模式');
+    setIsContinuousActive(false);
+    setContinuousStatus('idle');
+
+    // 停止 VAD 檢查
+    if (vadCheckIntervalRef.current) {
+      clearInterval(vadCheckIntervalRef.current);
+      vadCheckIntervalRef.current = null;
+    }
+
+    // 停止 Queue 錄音
+    if (queueRecorderRef.current && queueRecorderRef.current.state !== 'inactive') {
+      queueRecorderRef.current.stop();
+    }
+
+    // 停止連續錄音
+    if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
+      continuousRecorderRef.current.stop();
+    }
+
+    vadSpeakingRef.current = false;
+  }, []);
+
+  // 啟動 Queue 緩衝錄音
+  const startQueueRecording = useCallback(() => {
+    if (!micStreamRef.current) return;
+
+    try {
+      const recorder = new MediaRecorder(micStreamRef.current, {
+        mimeType: 'audio/webm;codecs=opus',
+      });
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          // 加入 Queue
+          audioQueueRef.current.push({
+            data: event.data,
+            timestamp: Date.now(),
+          });
+
+          // 只保留最近 300ms 的音訊
+          const cutoffTime = Date.now() - 300;
+          audioQueueRef.current = audioQueueRef.current.filter(
+            item => item.timestamp > cutoffTime
+          );
+        }
+      };
+
+      // 每 100ms 產生一個音訊片段
+      recorder.start(100);
+      queueRecorderRef.current = recorder;
+      console.log('[VAD] Queue 緩衝錄音啟動');
+
+    } catch (err) {
+      console.error('[VAD] Queue 錄音啟動失敗:', err);
+    }
+  }, []);
+
+  // 檢查 VAD 狀態
+  const checkVADStatus = useCallback(() => {
+    const currentVolume = currentVolumeRef.current;
+    const now = Date.now();
+    const exceedsThreshold = currentVolume > threshold;
+
+    if (exceedsThreshold) {
+      // 音量超過門檻
+      if (!vadSpeakingRef.current) {
+        // 剛開始說話 → 開始錄音
+        console.log('[VAD] 偵測到說話起點, 音量:', currentVolume);
+        vadSpeakingRef.current = true;
+        setContinuousStatus('speaking');
+        startContinuousRecording();
+      }
+      // 重置句尾計時器（滑動延伸）
+      vadEndTimeRef.current = now + sentenceEndWait;
+
+    } else if (vadSpeakingRef.current) {
+      // 音量低於門檻，但還在說話狀態
+      if (now > vadEndTimeRef.current) {
+        // 超過句尾等待時間 → 說話結束
+        console.log('[VAD] 偵測到說話終點');
+        vadSpeakingRef.current = false;
+        stopContinuousRecordingAndProcess();
+      }
+    }
+  }, [threshold, sentenceEndWait]);
+
+  // 開始連續模式錄音
+  const startContinuousRecording = useCallback(() => {
+    if (!micStreamRef.current) return;
+
+    try {
+      // 取出 Queue 中的緩衝音訊（說話起點前的聲音）
+      const queuedChunks = audioQueueRef.current.map(item => item.data);
+      continuousChunksRef.current = [...queuedChunks];
+      console.log('[VAD] 取出 Queue 緩衝:', queuedChunks.length, '個片段');
+
+      const recorder = new MediaRecorder(micStreamRef.current, {
+        mimeType: 'audio/webm;codecs=opus',
+      });
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          continuousChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.start(100);
+      continuousRecorderRef.current = recorder;
+      console.log('[VAD] 連續錄音開始');
+
+    } catch (err) {
+      console.error('[VAD] 連續錄音啟動失敗:', err);
+    }
+  }, []);
+
+  // 停止連續錄音並處理
+  const stopContinuousRecordingAndProcess = useCallback(async () => {
+    setContinuousStatus('processing');
+
+    if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
+      continuousRecorderRef.current.stop();
+    }
+
+    // 等待最後的資料
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    const chunks = continuousChunksRef.current;
+    if (chunks.length === 0) {
+      console.log('[VAD] 沒有錄音資料');
+      setContinuousStatus('listening');
+      return;
+    }
+
+    console.log('[VAD] 處理錄音, 片段數:', chunks.length);
+
+    try {
+      const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+
+      if (audioBlob.size < 1000) {
+        console.log('[VAD] 錄音太短，跳過');
+        setContinuousStatus('listening');
+        continuousChunksRef.current = [];
+        return;
+      }
+
+      // 轉換為 base64
+      const reader = new FileReader();
+      reader.readAsDataURL(audioBlob);
+
+      reader.onloadend = async () => {
+        const base64Audio = reader.result.split(',')[1];
+
+        try {
+          const response = await fetch(`${API_BASE}/api/diagnostic/translate`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              audio: base64Audio,
+              direction,
+            }),
+          });
+
+          const result = await response.json();
+          console.log('[VAD] 翻譯結果:', result);
+
+          setTranslationResult(result);
+
+          if (result.success) {
+            setTranslationHistory(prev => [
+              {
+                ...result,
+                timestamp: new Date().toISOString(),
+                mode: 'continuous',
+              },
+              ...prev.slice(0, 9),
+            ]);
+          }
+
+        } catch (err) {
+          console.error('[VAD] 翻譯 API 錯誤:', err);
+          setTranslationResult({
+            success: false,
+            error: '無法連接伺服器: ' + err.message,
+          });
+        }
+
+        // 回到監聽狀態
+        setContinuousStatus('listening');
+        continuousChunksRef.current = [];
+      };
+
+    } catch (err) {
+      console.error('[VAD] 處理錄音錯誤:', err);
+      setContinuousStatus('listening');
+      continuousChunksRef.current = [];
+    }
+  }, [direction]);
+
+  // 切換翻譯模式
+  const switchTranslationMode = useCallback((mode) => {
+    if (mode === translationMode) return;
+
+    // 停止目前的模式
+    if (translationMode === 'continuous' && isContinuousActive) {
+      stopContinuousMode();
+    }
+
+    setTranslationMode(mode);
+  }, [translationMode, isContinuousActive, stopContinuousMode]);
+
+  // 清理連續模式
+  useEffect(() => {
+    return () => {
+      if (vadCheckIntervalRef.current) {
+        clearInterval(vadCheckIntervalRef.current);
+      }
+      if (queueRecorderRef.current && queueRecorderRef.current.state !== 'inactive') {
+        queueRecorderRef.current.stop();
+      }
+      if (continuousRecorderRef.current && continuousRecorderRef.current.state !== 'inactive') {
+        continuousRecorderRef.current.stop();
+      }
+    };
+  }, []);
+
   // ========== 校準功能（新版簡化設計）==========
 
   // 保存曲線圖狀態
@@ -943,6 +1224,7 @@ export default function Diagnostic() {
       calibratedAt: new Date().toISOString(),
     };
     localStorage.setItem(CALIBRATION_KEY, JSON.stringify(data));
+    setIsCalibrated(true);
     console.log('[校準] 已儲存:', data);
   };
 
@@ -1237,46 +1519,159 @@ export default function Diagnostic() {
         <section className="device-section translation-section">
           <h2>翻譯測試</h2>
 
+          {/* 模式切換 */}
+          <div className="mode-selector">
+            <button
+              className={`mode-btn ${translationMode === 'button' ? 'active' : ''}`}
+              onClick={() => switchTranslationMode('button')}
+            >
+              按鈕模式
+            </button>
+            <button
+              className={`mode-btn ${translationMode === 'continuous' ? 'active' : ''}`}
+              onClick={() => switchTranslationMode('continuous')}
+            >
+              連續模式
+            </button>
+          </div>
+
           {/* 語言方向選擇 */}
           <div className="direction-selector">
             <button
               className={`direction-btn ${direction === 'zh-to-vi' ? 'active' : ''}`}
               onClick={() => setDirection('zh-to-vi')}
+              disabled={isContinuousActive}
             >
               中文 → 越南文
             </button>
             <button
               className={`direction-btn ${direction === 'vi-to-zh' ? 'active' : ''}`}
               onClick={() => setDirection('vi-to-zh')}
+              disabled={isContinuousActive}
             >
               越南文 → 中文
             </button>
           </div>
 
-          {/* 按住說話按鈕 */}
-          <button
-            className={`push-to-talk-btn ${isRecording ? 'recording' : ''} ${isProcessing ? 'processing' : ''}`}
-            onMouseDown={startRecording}
-            onMouseUp={stopRecording}
-            onMouseLeave={stopRecording}
-            onTouchStart={startRecording}
-            onTouchEnd={stopRecording}
-            disabled={isProcessing}
-          >
-            {isProcessing ? (
-              <>處理中...</>
-            ) : isRecording ? (
-              <>錄音中... 放開送出</>
-            ) : (
-              <>按住說話</>
-            )}
-          </button>
+          {/* 按鈕模式 */}
+          {translationMode === 'button' && (
+            <>
+              <button
+                className={`push-to-talk-btn ${isRecording ? 'recording' : ''} ${isProcessing ? 'processing' : ''}`}
+                onMouseDown={startRecording}
+                onMouseUp={stopRecording}
+                onMouseLeave={stopRecording}
+                onTouchStart={startRecording}
+                onTouchEnd={stopRecording}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <>處理中...</>
+                ) : isRecording ? (
+                  <>錄音中... 放開送出</>
+                ) : (
+                  <>按住說話</>
+                )}
+              </button>
 
-          <p className="hint">
-            {direction === 'zh-to-vi'
-              ? '按住按鈕說中文，放開後會翻譯成越南文'
-              : '按住按鈕說越南文，放開後會翻譯成中文'}
-          </p>
+              <p className="hint">
+                {direction === 'zh-to-vi'
+                  ? '按住按鈕說中文，放開後會翻譯成越南文'
+                  : '按住按鈕說越南文，放開後會翻譯成中文'}
+              </p>
+            </>
+          )}
+
+          {/* 連續模式 */}
+          {translationMode === 'continuous' && (
+            <div className="continuous-mode-area">
+              {/* 未校準提示 */}
+              {!isCalibrated && (
+                <div className="calibration-warning">
+                  <span className="warning-icon">⚠️</span>
+                  <span>請先完成上方的「語音校準」後再使用連續模式</span>
+                </div>
+              )}
+
+              {/* 校準參數顯示 */}
+              {isCalibrated && (
+                <div className="calibration-params-display">
+                  <div className="param-badge">
+                    <span className="param-name">靜音平均</span>
+                    <span className="param-val">{silenceAvg}</span>
+                  </div>
+                  <div className="param-badge">
+                    <span className="param-name">說話最大</span>
+                    <span className="param-val">{speechMax}</span>
+                  </div>
+                  <div className="param-badge threshold">
+                    <span className="param-name">判斷門檻</span>
+                    <span className="param-val">{threshold}</span>
+                  </div>
+                  <div className="param-badge">
+                    <span className="param-name">句尾等待</span>
+                    <span className="param-val">{sentenceEndWait}ms</span>
+                  </div>
+                </div>
+              )}
+
+              {/* 啟動/停止按鈕 */}
+              {isCalibrated && (
+                <>
+                  {!isContinuousActive ? (
+                    <button
+                      className="continuous-start-btn"
+                      onClick={startContinuousMode}
+                    >
+                      ▶ 啟動連續模式
+                    </button>
+                  ) : (
+                    <button
+                      className="continuous-stop-btn"
+                      onClick={stopContinuousMode}
+                    >
+                      ⏹ 停止連續模式
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* 連續模式狀態顯示 */}
+              {isContinuousActive && (
+                <div className="continuous-status">
+                  <div className={`status-indicator ${continuousStatus}`}>
+                    {continuousStatus === 'listening' && (
+                      <>
+                        <span className="status-icon">👂</span>
+                        <span className="status-text">監聽中...</span>
+                      </>
+                    )}
+                    {continuousStatus === 'speaking' && (
+                      <>
+                        <span className="status-icon speaking">🎙️</span>
+                        <span className="status-text">錄音中...</span>
+                      </>
+                    )}
+                    {continuousStatus === 'processing' && (
+                      <>
+                        <span className="status-icon processing">⏳</span>
+                        <span className="status-text">翻譯中...</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="status-hint">
+                    說話會自動偵測並翻譯，停止說話 {sentenceEndWait}ms 後送出
+                  </div>
+                </div>
+              )}
+
+              {!isContinuousActive && isCalibrated && (
+                <p className="hint">
+                  啟動後會自動偵測說話並翻譯，不需要按按鈕
+                </p>
+              )}
+            </div>
+          )}
 
           {/* TTS 錯誤訊息 */}
           {ttsError && (
