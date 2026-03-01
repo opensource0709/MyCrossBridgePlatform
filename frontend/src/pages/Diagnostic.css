@@ -1,0 +1,272 @@
+/* src/pages/Diagnostic.css */
+
+.diagnostic-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: white;
+}
+
+.diagnostic-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.diagnostic-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.error-banner {
+  background: #F44336;
+  color: white;
+  padding: 12px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.error-banner button {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.diagnostic-content {
+  padding: 20px;
+  max-width: 800px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.device-section {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.device-section h2 {
+  margin: 0 0 16px 0;
+  font-size: 1.2rem;
+  color: #4CAF50;
+}
+
+.device-select {
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+  color: white;
+  font-size: 1rem;
+  margin-bottom: 16px;
+}
+
+.device-select option {
+  background: #1a1a2e;
+  color: white;
+}
+
+/* 攝影機預覽 */
+.camera-preview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+.camera-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* 鏡像 */
+}
+
+.camera-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* 音量指示條 */
+.volume-meter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.volume-label {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+  min-width: 40px;
+}
+
+.volume-bar-container {
+  flex: 1;
+  height: 24px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.volume-bar {
+  height: 100%;
+  border-radius: 12px;
+  transition: width 0.05s ease-out;
+}
+
+.volume-value {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+  min-width: 30px;
+  text-align: right;
+}
+
+/* 測試音按鈕 */
+.test-sound-btn {
+  width: 100%;
+  padding: 16px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 12px;
+}
+
+.test-sound-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.test-sound-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.test-sound-btn.playing {
+  animation: pulse 0.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* 狀態摘要 */
+.status-summary {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.status-summary h2 {
+  margin: 0 0 16px 0;
+  font-size: 1.2rem;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.status-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.status-item.ok {
+  border: 1px solid #4CAF50;
+}
+
+.status-item.ok .status-icon {
+  color: #4CAF50;
+}
+
+.status-item.warning {
+  border: 1px solid #FFC107;
+}
+
+.status-item.warning .status-icon {
+  color: #FFC107;
+}
+
+.status-item.error {
+  border: 1px solid #F44336;
+}
+
+.status-item.error .status-icon {
+  color: #F44336;
+}
+
+.status-icon {
+  font-size: 1.5rem;
+}
+
+/* 響應式 */
+@media (max-width: 600px) {
+  .diagnostic-content {
+    padding: 16px;
+  }
+
+  .device-section {
+    padding: 16px;
+  }
+
+  .status-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .status-item {
+    padding: 12px 8px;
+    font-size: 0.85rem;
+  }
+}

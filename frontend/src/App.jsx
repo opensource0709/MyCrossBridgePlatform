@@ -10,6 +10,7 @@ import Discovery from './pages/Discovery';
 import Matches from './pages/Matches';
 import Chat from './pages/Chat';
 import Profile from './pages/Profile';
+import Diagnostic from './pages/Diagnostic';
 
 import './App.css';
 
@@ -62,6 +63,9 @@ function AppRoutes() {
       <Route path="/profile" element={
         <PrivateRoute><Profile /></PrivateRoute>
       } />
+
+      {/* 診斷頁面（公開，不需登入） */}
+      <Route path="/diagnostic" element={<Diagnostic />} />
 
       {/* 404 */}
       <Route path="*" element={<Navigate to="/" />} />
