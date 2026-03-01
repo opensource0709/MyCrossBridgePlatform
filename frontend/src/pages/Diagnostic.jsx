@@ -1251,250 +1251,116 @@ export default function Diagnostic() {
       )}
 
       <div className="diagnostic-content">
-        {/* 攝影機區塊 */}
-        <section className="device-section">
-          <h2>攝影機</h2>
-          <select
-            value={selectedCamera}
-            onChange={(e) => setSelectedCamera(e.target.value)}
-            className="device-select"
-          >
-            {cameras.map(camera => (
-              <option key={camera.deviceId} value={camera.deviceId}>
-                {camera.label || `攝影機 ${cameras.indexOf(camera) + 1}`}
-              </option>
-            ))}
-          </select>
-          <div className="camera-preview">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-            />
-            {!cameraStream && (
-              <div className="camera-placeholder">
-                攝影機載入中...
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* 麥克風區塊 */}
-        <section className="device-section">
-          <h2>麥克風</h2>
-          <select
-            value={selectedMicrophone}
-            onChange={(e) => setSelectedMicrophone(e.target.value)}
-            className="device-select"
-          >
-            {microphones.map(mic => (
-              <option key={mic.deviceId} value={mic.deviceId}>
-                {mic.label || `麥克風 ${microphones.indexOf(mic) + 1}`}
-              </option>
-            ))}
-          </select>
-          <div className="volume-meter">
-            <div className="volume-label">音量</div>
-            <div className="volume-bar-container">
-              <div
-                className="volume-bar"
-                style={{
-                  width: `${Math.min(micVolume, 100)}%`,
-                  backgroundColor: getVolumeColor(micVolume),
-                }}
+        {/* ========== 左欄：裝置區塊 ========== */}
+        <div className="left-column">
+          {/* 攝影機區塊 */}
+          <section className="device-section camera-section">
+            <h2>攝影機</h2>
+            <select
+              value={selectedCamera}
+              onChange={(e) => setSelectedCamera(e.target.value)}
+              className="device-select"
+            >
+              {cameras.map(camera => (
+                <option key={camera.deviceId} value={camera.deviceId}>
+                  {camera.label || `攝影機 ${cameras.indexOf(camera) + 1}`}
+                </option>
+              ))}
+            </select>
+            <div className="camera-preview">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
               />
+              {!cameraStream && (
+                <div className="camera-placeholder">
+                  攝影機載入中...
+                </div>
+              )}
             </div>
-            <div className="volume-value">{Math.round(micVolume)}</div>
-          </div>
-          <p className="hint">對著麥克風說話，音量條應該會跳動</p>
-        </section>
+          </section>
 
-        {/* 音訊視覺化區塊 */}
-        <section className="device-section visualization-section">
-          <h2>音訊視覺化</h2>
-
-          {/* 音量數值顯示 */}
-          <div className="volume-stats">
-            <div className="stat-item">
-              <span className="stat-label">目前音量</span>
-              <span className="stat-value">{Math.round(micVolume)}</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-label">峰值</span>
-              <span className="stat-value peak">{Math.round(peakVolume)}</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-label">狀態</span>
-              <span className={`stat-value status ${micVolume > 30 ? 'speaking' : 'silent'}`}>
-                {micVolume > 30 ? '說話中' : '靜音'}
-              </span>
-            </div>
-          </div>
-
-          {/* 波形圖 */}
-          <div className="canvas-container">
-            <div className="canvas-label">波形圖（時域）</div>
-            <canvas
-              ref={waveformCanvasRef}
-              width={600}
-              height={100}
-              className="audio-canvas"
-            />
-          </div>
-
-          {/* 頻譜圖 */}
-          <div className="canvas-container">
-            <div className="canvas-label">頻譜圖（FFT 頻域）</div>
-            <canvas
-              ref={spectrumCanvasRef}
-              width={600}
-              height={120}
-              className="audio-canvas"
-            />
-          </div>
-
-          <p className="hint">說話時波形圖和頻譜圖應該有明顯變化</p>
-        </section>
-
-        {/* 校準區塊（新版簡化設計） */}
-        <section className="device-section calibration-section-v2">
-          <h2>語音校準</h2>
-
-          {/* 即時音量大數字顯示 */}
-          <div className="realtime-volume-display">
-            <div className="volume-number">{Math.round(micVolume)}</div>
-            <div className="volume-label-big">即時音量</div>
-          </div>
-
-          {/* 四個可調整的參數輸入 */}
-          <div className="calibration-inputs">
-            <div className="input-group">
-              <label>靜音平均值</label>
-              <input
-                type="number"
-                value={silenceAvg}
-                onChange={(e) => setSilenceAvg(Math.max(0, parseInt(e.target.value) || 0))}
-                min="0"
-                max="100"
-              />
-              <div className="input-color-indicator silence"></div>
-            </div>
-            <div className="input-group">
-              <label>說話最大值</label>
-              <input
-                type="number"
-                value={speechMax}
-                onChange={(e) => setSpeechMax(Math.max(0, parseInt(e.target.value) || 0))}
-                min="0"
-                max="200"
-              />
-              <div className="input-color-indicator speech"></div>
-            </div>
-            <div className="input-group">
-              <label>判斷門檻</label>
-              <input
-                type="number"
-                value={threshold}
-                onChange={(e) => setThreshold(Math.max(0, parseInt(e.target.value) || 0))}
-                min="0"
-                max="150"
-              />
-              <div className="input-color-indicator threshold"></div>
-            </div>
-            <div className="input-group sentence-wait">
-              <label>句尾等待時間</label>
-              <div className="input-with-unit">
-                <input
-                  type="number"
-                  value={sentenceEndWait}
-                  onChange={(e) => setSentenceEndWait(Math.max(100, parseInt(e.target.value) || 500))}
-                  min="100"
-                  max="3000"
-                  step="100"
+          {/* 麥克風區塊 */}
+          <section className="device-section mic-section">
+            <h2>麥克風</h2>
+            <select
+              value={selectedMicrophone}
+              onChange={(e) => setSelectedMicrophone(e.target.value)}
+              className="device-select"
+            >
+              {microphones.map(mic => (
+                <option key={mic.deviceId} value={mic.deviceId}>
+                  {mic.label || `麥克風 ${microphones.indexOf(mic) + 1}`}
+                </option>
+              ))}
+            </select>
+            <div className="volume-meter">
+              <div className="volume-label">音量</div>
+              <div className="volume-bar-container">
+                <div
+                  className="volume-bar"
+                  style={{
+                    width: `${Math.min(micVolume, 100)}%`,
+                    backgroundColor: getVolumeColor(micVolume),
+                  }}
                 />
-                <span className="input-unit">ms</span>
               </div>
-              <div className="input-hint">說話停止後，等待這段時間才判定為句子結束</div>
+              <div className="volume-value">{Math.round(micVolume)}</div>
             </div>
-          </div>
+          </section>
 
-          {/* 自動校準按鈕 */}
-          <div className="auto-calibration-area">
-            {calibrationStep === 0 ? (
-              <button className="calibration-btn primary large" onClick={startAutoCalibration}>
-                自動校準（靜音5秒 → 說話5秒）
-              </button>
-            ) : (
-              <div className="calibration-in-progress">
-                <div className="calibration-step-indicator">
-                  {calibrationStep === 1 ? '步驟 1/2: 靜音採樣中...' : '步驟 2/2: 說話採樣中...'}
-                </div>
-                <div className="calibration-message">{calibrationMessage}</div>
-                <div className="calibration-progress-bar">
-                  <div className="progress-fill" style={{ width: `${calibrationProgress}%` }} />
-                </div>
-                <button className="calibration-btn secondary" onClick={cancelCalibration}>
-                  取消
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* 即時音量曲線圖（持續顯示） */}
-          <div className="calibration-chart-container">
-            <div className="chart-header">
-              <span className="chart-title">即時音量曲線（最近 10 秒）</span>
-              <div className="chart-controls">
-                <button
-                  className={`chart-pause-btn ${isChartPaused ? 'paused' : ''}`}
-                  onClick={toggleChartPause}
-                >
-                  {isChartPaused ? '▶ 繼續運作' : '⏸ 停止移動'}
-                </button>
-                <div className={`speaking-indicator ${isSpeakingNow ? 'speaking' : 'silent'}`}>
-                  {isSpeakingNow ? '● 說話中' : '○ 靜音'}
-                </div>
-              </div>
-            </div>
-            <canvas
-              ref={calibrationChartRef}
-              width={700}
-              height={200}
-              className="calibration-chart"
-              onMouseMove={handleChartMouseMove}
-              onMouseLeave={handleChartMouseLeave}
-            />
-            <div className="chart-legend">
-              <span className="legend-item">
-                <span className="legend-line silence"></span>靜音平均值（藍）
-              </span>
-              <span className="legend-item">
-                <span className="legend-line speech"></span>說話最大值（綠）
-              </span>
-              <span className="legend-item">
-                <span className="legend-line threshold"></span>判斷門檻（紅）
-              </span>
-            </div>
-          </div>
-
-          {/* 校準訊息與操作 */}
-          {calibrationMessage && calibrationStep === 0 && (
-            <div className="calibration-status-message">{calibrationMessage}</div>
-          )}
-
-          <div className="calibration-actions-row">
-            <button className="calibration-btn secondary small" onClick={saveCurrentCalibration}>
-              儲存設定
+          {/* 喇叭區塊 */}
+          <section className="device-section speaker-section">
+            <h2>喇叭</h2>
+            <select
+              value={selectedSpeaker}
+              onChange={(e) => setSelectedSpeaker(e.target.value)}
+              className="device-select"
+            >
+              {speakers.length > 0 ? (
+                speakers.map(speaker => (
+                  <option key={speaker.deviceId} value={speaker.deviceId}>
+                    {speaker.label || `喇叭 ${speakers.indexOf(speaker) + 1}`}
+                  </option>
+                ))
+              ) : (
+                <option value="">使用系統預設</option>
+              )}
+            </select>
+            <button
+              className={`test-sound-btn ${isTestingAudio ? 'playing' : ''}`}
+              onClick={playTestSound}
+              disabled={isTestingAudio}
+            >
+              {isTestingAudio ? '播放中...' : '🔊 播放測試音'}
             </button>
-            <button className="calibration-btn secondary small" onClick={resetToDefaults}>
-              重置預設
-            </button>
-          </div>
-        </section>
+          </section>
 
-        {/* 翻譯測試區塊 */}
-        <section className="device-section translation-section">
+          {/* 裝置狀態摘要 */}
+          <section className="status-summary">
+            <div className="status-grid">
+              <div className={`status-item ${cameraStream ? 'ok' : 'error'}`}>
+                <span className="status-icon">{cameraStream ? '✓' : '✗'}</span>
+                <span>攝影機</span>
+              </div>
+              <div className={`status-item ${micVolume > 0 ? 'ok' : 'warning'}`}>
+                <span className="status-icon">{micVolume > 0 ? '✓' : '?'}</span>
+                <span>麥克風</span>
+              </div>
+              <div className="status-item ok">
+                <span className="status-icon">✓</span>
+                <span>喇叭</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        {/* ========== 右欄：翻譯與校準 ========== */}
+        <div className="right-column">
+          {/* 翻譯測試區塊 */}
+          <section className="device-section translation-section">
           <h2>翻譯測試</h2>
 
           {/* 模式切換與自動播放開關 */}
@@ -1717,7 +1583,7 @@ export default function Diagnostic() {
             </div>
           )}
 
-          {/* 翻譯歷史 */}
+          {/* 翻譯歷史（只顯示最近2筆） */}
           {translationHistory.length > 0 && (
             <div className="translation-history">
               <div className="history-header">
@@ -1725,7 +1591,7 @@ export default function Diagnostic() {
                 <button className="clear-history-btn" onClick={clearHistory}>清除</button>
               </div>
               <div className="history-list">
-                {translationHistory.map((item, index) => (
+                {translationHistory.slice(0, 2).map((item, index) => (
                   <div key={index} className="history-item">
                     <div className="history-texts">
                       <span className="history-original">{item.originalText}</span>
@@ -1754,50 +1620,141 @@ export default function Diagnostic() {
           )}
         </section>
 
-        {/* 喇叭區塊 */}
-        <section className="device-section">
-          <h2>喇叭</h2>
-          <select
-            value={selectedSpeaker}
-            onChange={(e) => setSelectedSpeaker(e.target.value)}
-            className="device-select"
-          >
-            {speakers.length > 0 ? (
-              speakers.map(speaker => (
-                <option key={speaker.deviceId} value={speaker.deviceId}>
-                  {speaker.label || `喇叭 ${speakers.indexOf(speaker) + 1}`}
-                </option>
-              ))
-            ) : (
-              <option value="">使用系統預設</option>
-            )}
-          </select>
-          <button
-            className={`test-sound-btn ${isTestingAudio ? 'playing' : ''}`}
-            onClick={playTestSound}
-            disabled={isTestingAudio}
-          >
-            {isTestingAudio ? '播放中...' : '播放測試音'}
-          </button>
-          <p className="hint">點擊按鈕應該會聽到三個音符</p>
-        </section>
+          {/* 即時音量曲線圖 */}
+          <section className="device-section chart-section">
+            <div className="chart-header">
+              <span className="chart-title">即時音量曲線</span>
+              <div className="chart-controls">
+                <div className={`speaking-indicator ${isSpeakingNow ? 'speaking' : 'silent'}`}>
+                  {isSpeakingNow ? '● 說話中' : '○ 靜音'}
+                </div>
+                <button
+                  className={`chart-pause-btn ${isChartPaused ? 'paused' : ''}`}
+                  onClick={toggleChartPause}
+                >
+                  {isChartPaused ? '▶' : '⏸'}
+                </button>
+              </div>
+            </div>
+            <canvas
+              ref={calibrationChartRef}
+              width={700}
+              height={150}
+              className="calibration-chart"
+              onMouseMove={handleChartMouseMove}
+              onMouseLeave={handleChartMouseLeave}
+            />
+            <div className="chart-legend">
+              <span className="legend-item"><span className="legend-line silence"></span>靜音</span>
+              <span className="legend-item"><span className="legend-line speech"></span>說話</span>
+              <span className="legend-item"><span className="legend-line threshold"></span>門檻</span>
+            </div>
+          </section>
 
-        {/* 裝置狀態摘要 */}
-        <section className="status-summary">
-          <h2>裝置狀態</h2>
-          <div className="status-grid">
-            <div className={`status-item ${cameraStream ? 'ok' : 'error'}`}>
-              <span className="status-icon">{cameraStream ? '✓' : '✗'}</span>
-              <span>攝影機</span>
+          {/* 校準參數區塊 */}
+          <section className="device-section calibration-section-v2">
+            <div className="calibration-compact">
+              <div className="calibration-inputs-row">
+                <div className="input-group-compact">
+                  <label>靜音</label>
+                  <input
+                    type="number"
+                    value={silenceAvg}
+                    onChange={(e) => setSilenceAvg(Math.max(0, parseInt(e.target.value) || 0))}
+                  />
+                </div>
+                <div className="input-group-compact">
+                  <label>說話</label>
+                  <input
+                    type="number"
+                    value={speechMax}
+                    onChange={(e) => setSpeechMax(Math.max(0, parseInt(e.target.value) || 0))}
+                  />
+                </div>
+                <div className="input-group-compact threshold">
+                  <label>門檻</label>
+                  <input
+                    type="number"
+                    value={threshold}
+                    onChange={(e) => setThreshold(Math.max(0, parseInt(e.target.value) || 0))}
+                  />
+                </div>
+                <div className="input-group-compact">
+                  <label>句尾ms</label>
+                  <input
+                    type="number"
+                    value={sentenceEndWait}
+                    onChange={(e) => setSentenceEndWait(Math.max(100, parseInt(e.target.value) || 500))}
+                    step="100"
+                  />
+                </div>
+              </div>
+              <div className="calibration-actions-compact">
+                {calibrationStep === 0 ? (
+                  <button className="calibration-btn primary" onClick={startAutoCalibration}>
+                    自動校準
+                  </button>
+                ) : (
+                  <div className="calibration-in-progress-compact">
+                    <div className="calibration-progress-bar">
+                      <div className="progress-fill" style={{ width: `${calibrationProgress}%` }} />
+                    </div>
+                    <span className="progress-text">
+                      {calibrationStep === 1 ? '靜音...' : '說話...'}
+                    </span>
+                    <button className="cancel-btn" onClick={cancelCalibration}>✕</button>
+                  </div>
+                )}
+                <button className="calibration-btn secondary" onClick={saveCurrentCalibration}>
+                  儲存
+                </button>
+                <button className="calibration-btn secondary" onClick={resetToDefaults}>
+                  重置
+                </button>
+              </div>
+              {calibrationMessage && calibrationStep === 0 && (
+                <div className="calibration-status-message-compact">{calibrationMessage}</div>
+              )}
             </div>
-            <div className={`status-item ${micVolume > 0 ? 'ok' : 'warning'}`}>
-              <span className="status-icon">{micVolume > 0 ? '✓' : '?'}</span>
-              <span>麥克風</span>
+          </section>
+        </div>
+
+        {/* ========== 音訊視覺化（手機版才顯示）========== */}
+        <section className="device-section visualization-section">
+          <h2>音訊視覺化</h2>
+          <div className="volume-stats">
+            <div className="stat-item">
+              <span className="stat-label">目前音量</span>
+              <span className="stat-value">{Math.round(micVolume)}</span>
             </div>
-            <div className="status-item ok">
-              <span className="status-icon">✓</span>
-              <span>喇叭</span>
+            <div className="stat-item">
+              <span className="stat-label">峰值</span>
+              <span className="stat-value peak">{Math.round(peakVolume)}</span>
             </div>
+            <div className="stat-item">
+              <span className="stat-label">狀態</span>
+              <span className={`stat-value status ${micVolume > 30 ? 'speaking' : 'silent'}`}>
+                {micVolume > 30 ? '說話中' : '靜音'}
+              </span>
+            </div>
+          </div>
+          <div className="canvas-container">
+            <div className="canvas-label">波形圖（時域）</div>
+            <canvas
+              ref={waveformCanvasRef}
+              width={600}
+              height={100}
+              className="audio-canvas"
+            />
+          </div>
+          <div className="canvas-container">
+            <div className="canvas-label">頻譜圖（FFT 頻域）</div>
+            <canvas
+              ref={spectrumCanvasRef}
+              width={600}
+              height={120}
+              className="audio-canvas"
+            />
           </div>
         </section>
       </div>
