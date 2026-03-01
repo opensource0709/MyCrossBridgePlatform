@@ -323,14 +323,81 @@
   color: #FF9800;
 }
 
+/* 翻譯控制區（模式切換 + 自動播放） */
+.translation-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
 /* 模式切換 */
 .mode-selector {
   display: flex;
   gap: 8px;
-  margin-bottom: 16px;
   padding: 4px;
   background: rgba(0, 0, 0, 0.3);
   border-radius: 8px;
+  flex-shrink: 0;
+}
+
+/* 自動播放開關 */
+.auto-play-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.auto-play-toggle input {
+  display: none;
+}
+
+.toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  transition: all 0.3s;
+  flex-shrink: 0;
+}
+
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  transition: all 0.3s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.auto-play-toggle input:checked + .toggle-switch {
+  background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+}
+
+.auto-play-toggle input:checked + .toggle-switch::after {
+  left: 22px;
+}
+
+.toggle-label {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+}
+
+.auto-play-toggle:hover .toggle-label {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.auto-play-toggle input:checked ~ .toggle-label {
+  color: #4CAF50;
 }
 
 .mode-btn {
@@ -1616,6 +1683,22 @@
 
   .device-section {
     padding: 16px;
+  }
+
+  /* 翻譯控制區響應式 */
+  .translation-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .mode-selector {
+    width: 100%;
+  }
+
+  .auto-play-toggle {
+    justify-content: flex-start;
+    padding: 8px 0;
   }
 
   .status-grid {

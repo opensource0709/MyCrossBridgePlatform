@@ -47,6 +47,7 @@ export default function Diagnostic() {
   // TTS 狀態
   const [playingTtsId, setPlayingTtsId] = useState(null); // 正在播放的項目 ID
   const [ttsError, setTtsError] = useState('');
+  const [autoPlayTts, setAutoPlayTts] = useState(false); // 翻譯後自動播放語音
 
   // 校準狀態（新版簡化設計）
   const [calibrationStep, setCalibrationStep] = useState(0); // 0=待機, 1=靜音採樣中, 2=說話採樣中
@@ -85,12 +86,20 @@ export default function Diagnostic() {
   const calibrationChartRef = useRef(null); // 校準曲線圖 canvas
   const calibrationChartAnimationRef = useRef(null); // 校準曲線圖動畫
 
+  // 自動播放 TTS ref（用於 async callback）
+  const autoPlayTtsRef = useRef(false);
+
   // 連續模式 VAD 相關 refs
   const continuousRecorderRef = useRef(null); // 連續模式的 MediaRecorder
   const continuousChunksRef = useRef([]); // 連續模式錄音的音訊片段
   const vadSpeakingRef = useRef(false); // VAD 說話狀態
   const vadEndTimeRef = useRef(0); // VAD 說話結束時間
   const vadCheckIntervalRef = useRef(null); // VAD 檢查間隔
+
+  // 同步 autoPlayTts 到 ref（供 async callback 使用）
+  useEffect(() => {
+    autoPlayTtsRef.current = autoPlayTts;
+  }, [autoPlayTts]);
 
   // 載入已儲存的校準資料
   useEffect(() => {
@@ -507,6 +516,12 @@ export default function Diagnostic() {
               },
               ...prev.slice(0, 9), // 只保留最近 10 筆
             ]);
+
+            // 自動播放 TTS
+            if (autoPlayTtsRef.current && result.translatedText) {
+              const targetLang = result.direction === 'zh-to-vi' ? 'vi' : 'zh';
+              playTts(result.translatedText, targetLang, 'current');
+            }
           }
         } catch (err) {
           console.error('翻譯 API 錯誤:', err);
@@ -776,6 +791,12 @@ export default function Diagnostic() {
               },
               ...prev.slice(0, 9),
             ]);
+
+            // 自動播放 TTS
+            if (autoPlayTtsRef.current && result.translatedText) {
+              const targetLang = result.direction === 'zh-to-vi' ? 'vi' : 'zh';
+              playTts(result.translatedText, targetLang, 'current');
+            }
           }
 
         } catch (err) {
@@ -786,7 +807,7 @@ export default function Diagnostic() {
           });
         }
 
-        // 回到監聽狀態
+        // 回到監聯狀態
         setContinuousStatus('listening');
         continuousChunksRef.current = [];
       };
@@ -1476,20 +1497,32 @@ export default function Diagnostic() {
         <section className="device-section translation-section">
           <h2>翻譯測試</h2>
 
-          {/* 模式切換 */}
-          <div className="mode-selector">
-            <button
-              className={`mode-btn ${translationMode === 'button' ? 'active' : ''}`}
-              onClick={() => switchTranslationMode('button')}
-            >
-              按鈕模式
-            </button>
-            <button
-              className={`mode-btn ${translationMode === 'continuous' ? 'active' : ''}`}
-              onClick={() => switchTranslationMode('continuous')}
-            >
-              連續模式
-            </button>
+          {/* 模式切換與自動播放開關 */}
+          <div className="translation-controls">
+            <div className="mode-selector">
+              <button
+                className={`mode-btn ${translationMode === 'button' ? 'active' : ''}`}
+                onClick={() => switchTranslationMode('button')}
+              >
+                按鈕模式
+              </button>
+              <button
+                className={`mode-btn ${translationMode === 'continuous' ? 'active' : ''}`}
+                onClick={() => switchTranslationMode('continuous')}
+              >
+                連續模式
+              </button>
+            </div>
+
+            <label className="auto-play-toggle">
+              <input
+                type="checkbox"
+                checked={autoPlayTts}
+                onChange={(e) => setAutoPlayTts(e.target.checked)}
+              />
+              <span className="toggle-switch"></span>
+              <span className="toggle-label">翻譯後自動播放語音</span>
+            </label>
           </div>
 
           {/* 語言方向選擇 */}
