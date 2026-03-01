@@ -640,8 +640,15 @@ export default function Diagnostic() {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
     ctx.fillRect(0, 0, width, height);
 
-    // 計算 Y 軸範圍
-    const maxVolume = Math.max(100, speechMax * 1.5, ...volumeHistoryRef.current.map(d => d.volume)) * 1.2;
+    // 計算 Y 軸範圍（動態自動縮放）
+    // 取以下三個值中的最大值 × 1.3：
+    // 1. 目前畫面中曲線的最大音量
+    // 2. 說話最大值欄位的數值
+    // 3. 判斷門檻欄位的數值 × 2
+    const chartMaxVolume = volumeHistoryRef.current.length > 0
+      ? Math.max(...volumeHistoryRef.current.map(d => d.volume))
+      : 0;
+    const maxVolume = Math.max(chartMaxVolume, speechMax, threshold * 2) * 1.3;
     chartStateRef.current.maxVolume = maxVolume;
 
     // 繪製 Y 軸刻度
