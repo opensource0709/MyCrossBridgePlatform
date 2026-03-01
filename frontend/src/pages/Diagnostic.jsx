@@ -778,11 +778,49 @@ export default function Diagnostic() {
     setCalibrationMessage('');
   };
 
-  // 判斷目前是否為說話狀態（使用校準資料）
-  const isSpeaking = useCallback(() => {
-    const threshold = savedCalibration?.speakingThreshold || calibrationData?.speakingThreshold || 30;
-    return micVolume > threshold;
-  }, [micVolume, savedCalibration, calibrationData]);
+  // 驗證階段的說話狀態（用 ref 追蹤以實現遲滯效果）
+  const verificationSpeakingRef = useRef(false);
+
+  // 判斷目前是否為說話狀態（使用校準資料，帶遲滯效果）
+  const getVerificationStatus = useCallback(() => {
+    // 優先使用剛計算的 calibrationData（驗證階段）
+    const data = calibrationData || savedCalibration;
+    if (!data) {
+      return { speaking: micVolume > 30, volume: micVolume, threshold: 30 };
+    }
+
+    const volume = currentVolumeRef.current;
+    const startThreshold = data.vadStartThreshold;
+    const endThreshold = data.vadEndThreshold;
+
+    // 遲滯邏輯：
+    // 目前靜音 → 音量 > vadStartThreshold → 變成說話
+    // 目前說話 → 音量 < vadEndThreshold → 變成靜音
+    let speaking = verificationSpeakingRef.current;
+
+    if (!speaking && volume > startThreshold) {
+      speaking = true;
+      verificationSpeakingRef.current = true;
+    } else if (speaking && volume < endThreshold) {
+      speaking = false;
+      verificationSpeakingRef.current = false;
+    }
+
+    // 驗證階段時印出 console
+    if (calibrationStep === 3) {
+      console.log(`[驗證] 音量: ${volume.toFixed(1)}, 起點閾值: ${startThreshold}, 終點閾值: ${endThreshold}, 狀態: ${speaking ? '說話中' : '靜音'}`);
+    }
+
+    return {
+      speaking,
+      volume,
+      startThreshold,
+      endThreshold,
+    };
+  }, [micVolume, calibrationData, savedCalibration, calibrationStep]);
+
+  // 取得驗證狀態（每次 render 都會執行）
+  const verificationStatus = getVerificationStatus();
 
   return (
     <div className="diagnostic-page">
@@ -993,14 +1031,14 @@ export default function Diagnostic() {
               {/* 驗證階段的即時指示器 */}
               {calibrationStep === 3 && (
                 <div className="verification-indicator">
-                  <div className={`speaking-light ${isSpeaking() ? 'on' : 'off'}`}>
-                    {isSpeaking() ? '說話中' : '靜音'}
+                  <div className={`speaking-light ${verificationStatus.speaking ? 'on' : 'off'}`}>
+                    {verificationStatus.speaking ? '說話中' : '靜音'}
                   </div>
                   <div className="current-volume">
-                    目前音量: {Math.round(micVolume)}
+                    目前音量: {Math.round(verificationStatus.volume)}
                     {calibrationData && (
                       <span className="threshold-hint">
-                        （閾值: {calibrationData.speakingThreshold}）
+                        （起點: {calibrationData.vadStartThreshold} / 終點: {calibrationData.vadEndThreshold}）
                       </span>
                     )}
                   </div>
