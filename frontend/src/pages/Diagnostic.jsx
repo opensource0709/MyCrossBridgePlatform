@@ -1,5 +1,5 @@
 // src/pages/Diagnostic.jsx
-// 測試診斷頁面 - 第一階段：裝置檢測基礎
+// 測試診斷頁面 - 第二階段：音訊視覺化
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -21,6 +21,7 @@ export default function Diagnostic() {
   // 狀態
   const [cameraStream, setCameraStream] = useState(null);
   const [micVolume, setMicVolume] = useState(0);
+  const [peakVolume, setPeakVolume] = useState(0);
   const [isTestingAudio, setIsTestingAudio] = useState(false);
   const [error, setError] = useState('');
 
@@ -30,6 +31,9 @@ export default function Diagnostic() {
   const analyserRef = useRef(null);
   const micStreamRef = useRef(null);
   const animationFrameRef = useRef(null);
+  const waveformCanvasRef = useRef(null);
+  const spectrumCanvasRef = useRef(null);
+  const peakVolumeTimeoutRef = useRef(null);
 
   // 列出所有裝置
   const enumerateDevices = useCallback(async () => {
@@ -144,17 +148,40 @@ export default function Diagnostic() {
         const source = audioContext.createMediaStreamSource(stream);
         source.connect(analyser);
 
-        // 開始監測音量
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        // 開始監測音量與繪製視覺化
+        const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+        const timeDomainData = new Uint8Array(analyser.fftSize);
 
-        const updateVolume = () => {
-          analyser.getByteFrequencyData(dataArray);
-          const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+        const updateVisualization = () => {
+          // 取得頻域資料（用於頻譜圖和音量）
+          analyser.getByteFrequencyData(frequencyData);
+          // 取得時域資料（用於波形圖）
+          analyser.getByteTimeDomainData(timeDomainData);
+
+          // 計算音量
+          const average = frequencyData.reduce((a, b) => a + b, 0) / frequencyData.length;
           setMicVolume(average);
-          animationFrameRef.current = requestAnimationFrame(updateVolume);
+
+          // 更新峰值音量（保持 1 秒）
+          if (average > peakVolume) {
+            setPeakVolume(average);
+            if (peakVolumeTimeoutRef.current) {
+              clearTimeout(peakVolumeTimeoutRef.current);
+            }
+            peakVolumeTimeoutRef.current = setTimeout(() => {
+              setPeakVolume(0);
+            }, 1000);
+          }
+
+          // 繪製波形圖
+          drawWaveform(timeDomainData);
+          // 繪製頻譜圖
+          drawSpectrum(frequencyData);
+
+          animationFrameRef.current = requestAnimationFrame(updateVisualization);
         };
 
-        updateVolume();
+        updateVisualization();
       } catch (err) {
         console.error('麥克風啟動失敗:', err);
         setError('麥克風啟動失敗: ' + err.message);
@@ -163,6 +190,95 @@ export default function Diagnostic() {
 
     startMicMonitor();
   }, [selectedMicrophone]);
+
+  // 繪製波形圖（時域）
+  const drawWaveform = (dataArray) => {
+    const canvas = waveformCanvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // 清除畫布
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.fillRect(0, 0, width, height);
+
+    // 繪製波形
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#4CAF50';
+    ctx.beginPath();
+
+    const sliceWidth = width / dataArray.length;
+    let x = 0;
+
+    for (let i = 0; i < dataArray.length; i++) {
+      const v = dataArray[i] / 128.0; // 轉換為 0-2 範圍
+      const y = (v * height) / 2;
+
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+
+      x += sliceWidth;
+    }
+
+    ctx.lineTo(width, height / 2);
+    ctx.stroke();
+
+    // 繪製中線
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, height / 2);
+    ctx.lineTo(width, height / 2);
+    ctx.stroke();
+  };
+
+  // 繪製頻譜圖（頻域 FFT）
+  const drawSpectrum = (dataArray) => {
+    const canvas = spectrumCanvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // 清除畫布
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.fillRect(0, 0, width, height);
+
+    // 繪製頻譜條
+    const barCount = dataArray.length;
+    const barWidth = width / barCount;
+    const barGap = 1;
+
+    for (let i = 0; i < barCount; i++) {
+      const value = dataArray[i];
+      const barHeight = (value / 255) * height;
+
+      // 漸層顏色：低頻綠色 -> 中頻黃色 -> 高頻紅色
+      const hue = 120 - (i / barCount) * 120; // 120=綠, 60=黃, 0=紅
+      const saturation = 80;
+      const lightness = 50;
+
+      ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+      ctx.fillRect(
+        i * barWidth + barGap / 2,
+        height - barHeight,
+        barWidth - barGap,
+        barHeight
+      );
+    }
+
+    // 繪製頻率標籤
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.font = '10px monospace';
+    ctx.fillText('低頻', 5, height - 5);
+    ctx.fillText('高頻', width - 30, height - 5);
+  };
 
   // 播放測試音
   const playTestSound = async () => {
@@ -291,6 +407,53 @@ export default function Diagnostic() {
             <div className="volume-value">{Math.round(micVolume)}</div>
           </div>
           <p className="hint">對著麥克風說話，音量條應該會跳動</p>
+        </section>
+
+        {/* 音訊視覺化區塊 */}
+        <section className="device-section visualization-section">
+          <h2>音訊視覺化</h2>
+
+          {/* 音量數值顯示 */}
+          <div className="volume-stats">
+            <div className="stat-item">
+              <span className="stat-label">目前音量</span>
+              <span className="stat-value">{Math.round(micVolume)}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">峰值</span>
+              <span className="stat-value peak">{Math.round(peakVolume)}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">狀態</span>
+              <span className={`stat-value status ${micVolume > 30 ? 'speaking' : 'silent'}`}>
+                {micVolume > 30 ? '說話中' : '靜音'}
+              </span>
+            </div>
+          </div>
+
+          {/* 波形圖 */}
+          <div className="canvas-container">
+            <div className="canvas-label">波形圖（時域）</div>
+            <canvas
+              ref={waveformCanvasRef}
+              width={600}
+              height={100}
+              className="audio-canvas"
+            />
+          </div>
+
+          {/* 頻譜圖 */}
+          <div className="canvas-container">
+            <div className="canvas-label">頻譜圖（FFT 頻域）</div>
+            <canvas
+              ref={spectrumCanvasRef}
+              width={600}
+              height={120}
+              className="audio-canvas"
+            />
+          </div>
+
+          <p className="hint">說話時波形圖和頻譜圖應該有明顯變化</p>
         </section>
 
         {/* 喇叭區塊 */}
