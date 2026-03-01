@@ -634,6 +634,301 @@
   padding: 0 4px;
 }
 
+/* 校準區塊 */
+.calibration-section h2 {
+  color: #9C27B0;
+}
+
+.saved-calibration,
+.no-calibration,
+.calibration-progress,
+.calibration-complete {
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+/* 已儲存的校準狀態 */
+.calibration-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+
+.status-badge.success {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4CAF50;
+  border: 1px solid #4CAF50;
+}
+
+.calibration-date {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.85rem;
+}
+
+/* 校準參數顯示 */
+.calibration-params {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.param-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+}
+
+.param-label {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.param-value {
+  font-family: 'Consolas', 'Monaco', monospace;
+  color: white;
+}
+
+.param-value.highlight {
+  color: #9C27B0;
+  font-weight: bold;
+}
+
+/* 校準按鈕 */
+.calibration-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.calibration-btn {
+  flex: 1;
+  padding: 12px 20px;
+  border-radius: 8px;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.calibration-btn.primary {
+  background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);
+  color: white;
+}
+
+.calibration-btn.primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(156, 39, 176, 0.4);
+}
+
+.calibration-btn.secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.calibration-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+}
+
+/* 未校準狀態 */
+.no-calibration {
+  text-align: center;
+}
+
+.no-calibration p {
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 16px;
+}
+
+/* 校準進度步驟 */
+.calibration-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.4;
+  transition: opacity 0.3s;
+}
+
+.step.active {
+  opacity: 1;
+}
+
+.step.done {
+  opacity: 0.8;
+}
+
+.step-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.step.active .step-number {
+  background: #9C27B0;
+  border-color: #9C27B0;
+}
+
+.step.done .step-number {
+  background: #4CAF50;
+  border-color: #4CAF50;
+}
+
+.step.done .step-number::after {
+  content: '✓';
+}
+
+.step-label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.step.active .step-label {
+  color: white;
+}
+
+.step-connector {
+  width: 40px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  margin-bottom: 20px;
+}
+
+/* 校準訊息 */
+.calibration-message {
+  text-align: center;
+  font-size: 1.1rem;
+  color: white;
+  margin-bottom: 16px;
+}
+
+/* 校準進度條 */
+.calibration-progress-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #9C27B0 0%, #E91E63 100%);
+  border-radius: 4px;
+  transition: width 0.1s ease-out;
+}
+
+/* 驗證指示器 */
+.verification-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.speaking-light {
+  padding: 16px 32px;
+  border-radius: 8px;
+  font-size: 1.2rem;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.speaking-light.off {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.speaking-light.on {
+  background: #4CAF50;
+  color: white;
+  box-shadow: 0 0 20px rgba(76, 175, 80, 0.5);
+  animation: speaking-glow 0.5s infinite;
+}
+
+@keyframes speaking-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(76, 175, 80, 0.5); }
+  50% { box-shadow: 0 0 30px rgba(76, 175, 80, 0.8); }
+}
+
+.current-volume {
+  color: rgba(255, 255, 255, 0.7);
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.threshold-hint {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.85rem;
+  margin-left: 8px;
+}
+
+/* 校準結果預覽 */
+.calibration-result-preview {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.calibration-result-preview h4 {
+  margin: 0 0 12px 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+}
+
+/* 校準完成 */
+.calibration-complete {
+  text-align: center;
+}
+
+.success-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #4CAF50;
+  color: white;
+  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+
+.calibration-complete p {
+  color: #4CAF50;
+  font-size: 1.1rem;
+  margin-bottom: 16px;
+}
+
 /* 響應式 */
 @media (max-width: 600px) {
   .diagnostic-content {
@@ -693,5 +988,22 @@
 
   .history-arrow {
     display: none;
+  }
+
+  /* 校準響應式 */
+  .calibration-params {
+    grid-template-columns: 1fr;
+  }
+
+  .calibration-steps {
+    flex-wrap: wrap;
+  }
+
+  .step-connector {
+    display: none;
+  }
+
+  .calibration-actions {
+    flex-direction: column;
   }
 }

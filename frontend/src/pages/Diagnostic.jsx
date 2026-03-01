@@ -1,5 +1,5 @@
 // src/pages/Diagnostic.jsx
-// 測試診斷頁面 - 第三階段：按鈕模式翻譯測試
+// 測試診斷頁面 - 第四階段：自動校準流程
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -7,6 +7,9 @@ import './Diagnostic.css';
 
 // API 基礎 URL
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+// localStorage key for calibration data
+const CALIBRATION_KEY = 'voiceCalibration';
 
 export default function Diagnostic() {
   const navigate = useNavigate();
@@ -39,6 +42,13 @@ export default function Diagnostic() {
   const [playingTtsId, setPlayingTtsId] = useState(null); // 正在播放的項目 ID
   const [ttsError, setTtsError] = useState('');
 
+  // 校準狀態
+  const [calibrationStep, setCalibrationStep] = useState(0); // 0=未開始, 1=靜音採樣, 2=說話採樣, 3=驗證, 4=完成
+  const [calibrationProgress, setCalibrationProgress] = useState(0); // 0-100
+  const [calibrationData, setCalibrationData] = useState(null); // 校準結果
+  const [calibrationMessage, setCalibrationMessage] = useState('');
+  const [savedCalibration, setSavedCalibration] = useState(null); // 已儲存的校準資料
+
   // Refs
   const videoRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -50,6 +60,22 @@ export default function Diagnostic() {
   const peakVolumeTimeoutRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const calibrationSamplesRef = useRef([]); // 校準時收集的音量樣本
+  const calibrationIntervalRef = useRef(null);
+
+  // 載入已儲存的校準資料
+  useEffect(() => {
+    const saved = localStorage.getItem(CALIBRATION_KEY);
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        setSavedCalibration(data);
+        console.log('[校準] 載入已儲存的校準資料:', data);
+      } catch (e) {
+        console.error('[校準] 無法解析已儲存的校準資料');
+      }
+    }
+  }, []);
 
   // 列出所有裝置
   const enumerateDevices = useCallback(async () => {
@@ -532,6 +558,175 @@ export default function Diagnostic() {
     return dir === 'zh-to-vi' ? 'vi' : 'zh';
   };
 
+  // ========== 校準功能 ==========
+
+  // 開始校準流程
+  const startCalibration = () => {
+    setCalibrationStep(1);
+    setCalibrationProgress(0);
+    setCalibrationData(null);
+    setCalibrationMessage('請保持安靜，正在採樣背景噪音...');
+    calibrationSamplesRef.current = [];
+
+    // 開始收集靜音樣本 (5秒)
+    const samples = [];
+    let elapsed = 0;
+    const duration = 5000; // 5秒
+    const interval = 50; // 每50ms採樣一次
+
+    calibrationIntervalRef.current = setInterval(() => {
+      samples.push(micVolume);
+      elapsed += interval;
+      setCalibrationProgress(Math.round((elapsed / duration) * 100));
+
+      if (elapsed >= duration) {
+        clearInterval(calibrationIntervalRef.current);
+        finishSilenceSampling(samples);
+      }
+    }, interval);
+  };
+
+  // 完成靜音採樣
+  const finishSilenceSampling = (samples) => {
+    // 計算靜音統計
+    const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+    const max = Math.max(...samples);
+    const stdDev = Math.sqrt(
+      samples.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / samples.length
+    );
+
+    calibrationSamplesRef.current = {
+      silence: { samples, avg, max, stdDev }
+    };
+
+    console.log('[校準] 靜音採樣完成:', { avg, max, stdDev });
+
+    // 進入說話採樣階段
+    setCalibrationStep(2);
+    setCalibrationProgress(0);
+    setCalibrationMessage('請正常說話 5 秒，例如數 1 到 10...');
+
+    // 開始收集說話樣本 (5秒)
+    const speechSamples = [];
+    let elapsed = 0;
+    const duration = 5000;
+    const interval = 50;
+
+    calibrationIntervalRef.current = setInterval(() => {
+      speechSamples.push(micVolume);
+      elapsed += interval;
+      setCalibrationProgress(Math.round((elapsed / duration) * 100));
+
+      if (elapsed >= duration) {
+        clearInterval(calibrationIntervalRef.current);
+        finishSpeechSampling(speechSamples);
+      }
+    }, interval);
+  };
+
+  // 完成說話採樣
+  const finishSpeechSampling = (samples) => {
+    // 計算說話統計
+    const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+    const max = Math.max(...samples);
+    const min = Math.min(...samples);
+    const stdDev = Math.sqrt(
+      samples.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / samples.length
+    );
+
+    // 過濾出說話時的音量（高於靜音平均值的樣本）
+    const silenceAvg = calibrationSamplesRef.current.silence.avg;
+    const speechOnlySamples = samples.filter(v => v > silenceAvg * 1.5);
+    const speechAvg = speechOnlySamples.length > 0
+      ? speechOnlySamples.reduce((a, b) => a + b, 0) / speechOnlySamples.length
+      : avg;
+
+    calibrationSamplesRef.current.speech = { samples, avg, max, min, stdDev, speechAvg };
+
+    console.log('[校準] 說話採樣完成:', { avg, max, min, stdDev, speechAvg });
+
+    // 計算校準參數
+    calculateCalibration();
+  };
+
+  // 計算校準參數
+  const calculateCalibration = () => {
+    const silence = calibrationSamplesRef.current.silence;
+    const speech = calibrationSamplesRef.current.speech;
+
+    // 計算閾值
+    // 靜音閾值 = 靜音平均 + 2倍標準差
+    const silenceThreshold = Math.round(silence.avg + silence.stdDev * 2);
+
+    // 說話閾值 = 靜音閾值和說話平均的中間值
+    const speakingThreshold = Math.round((silenceThreshold + speech.speechAvg) / 2);
+
+    // VAD 開始閾值 = 說話閾值的 80%
+    const vadStartThreshold = Math.round(speakingThreshold * 0.8);
+
+    // VAD 結束閾值 = 說話閾值的 60%
+    const vadEndThreshold = Math.round(speakingThreshold * 0.6);
+
+    const calibration = {
+      silenceAvg: Math.round(silence.avg),
+      silenceMax: Math.round(silence.max),
+      silenceStdDev: Math.round(silence.stdDev),
+      speechAvg: Math.round(speech.speechAvg),
+      speechMax: Math.round(speech.max),
+      silenceThreshold,
+      speakingThreshold,
+      vadStartThreshold,
+      vadEndThreshold,
+      calibratedAt: new Date().toISOString(),
+    };
+
+    setCalibrationData(calibration);
+    console.log('[校準] 計算完成:', calibration);
+
+    // 進入驗證階段
+    setCalibrationStep(3);
+    setCalibrationProgress(0);
+    setCalibrationMessage('校準完成！請說話測試效果，看綠燈是否正確亮起...');
+  };
+
+  // 儲存校準資料
+  const saveCalibration = () => {
+    if (!calibrationData) return;
+
+    localStorage.setItem(CALIBRATION_KEY, JSON.stringify(calibrationData));
+    setSavedCalibration(calibrationData);
+    setCalibrationStep(4);
+    setCalibrationMessage('校準資料已儲存！');
+    console.log('[校準] 已儲存到 localStorage');
+  };
+
+  // 重置校準
+  const resetCalibration = () => {
+    localStorage.removeItem(CALIBRATION_KEY);
+    setSavedCalibration(null);
+    setCalibrationStep(0);
+    setCalibrationData(null);
+    setCalibrationMessage('');
+    console.log('[校準] 已重置');
+  };
+
+  // 取消校準
+  const cancelCalibration = () => {
+    if (calibrationIntervalRef.current) {
+      clearInterval(calibrationIntervalRef.current);
+    }
+    setCalibrationStep(0);
+    setCalibrationProgress(0);
+    setCalibrationData(null);
+    setCalibrationMessage('');
+  };
+
+  // 判斷目前是否為說話狀態（使用校準資料）
+  const isSpeaking = useCallback(() => {
+    const threshold = savedCalibration?.speakingThreshold || calibrationData?.speakingThreshold || 30;
+    return micVolume > threshold;
+  }, [micVolume, savedCalibration, calibrationData]);
+
   return (
     <div className="diagnostic-page">
       <header className="diagnostic-header">
@@ -653,6 +848,157 @@ export default function Diagnostic() {
           </div>
 
           <p className="hint">說話時波形圖和頻譜圖應該有明顯變化</p>
+        </section>
+
+        {/* 校準區塊 */}
+        <section className="device-section calibration-section">
+          <h2>自動校準</h2>
+
+          {/* 已儲存的校準資料 */}
+          {savedCalibration && calibrationStep === 0 && (
+            <div className="saved-calibration">
+              <div className="calibration-status">
+                <span className="status-badge success">已校準</span>
+                <span className="calibration-date">
+                  {new Date(savedCalibration.calibratedAt).toLocaleString()}
+                </span>
+              </div>
+              <div className="calibration-params">
+                <div className="param-item">
+                  <span className="param-label">靜音閾值</span>
+                  <span className="param-value">{savedCalibration.silenceThreshold}</span>
+                </div>
+                <div className="param-item">
+                  <span className="param-label">說話閾值</span>
+                  <span className="param-value">{savedCalibration.speakingThreshold}</span>
+                </div>
+                <div className="param-item">
+                  <span className="param-label">VAD 起點</span>
+                  <span className="param-value">{savedCalibration.vadStartThreshold}</span>
+                </div>
+                <div className="param-item">
+                  <span className="param-label">VAD 終點</span>
+                  <span className="param-value">{savedCalibration.vadEndThreshold}</span>
+                </div>
+              </div>
+              <div className="calibration-actions">
+                <button className="calibration-btn secondary" onClick={resetCalibration}>
+                  重新校準
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 未校準狀態 */}
+          {!savedCalibration && calibrationStep === 0 && (
+            <div className="no-calibration">
+              <p>尚未校準，建議先進行校準以獲得最佳辨識效果。</p>
+              <button className="calibration-btn primary" onClick={startCalibration}>
+                開始校準
+              </button>
+            </div>
+          )}
+
+          {/* 校準進行中 */}
+          {calibrationStep > 0 && calibrationStep < 4 && (
+            <div className="calibration-progress">
+              {/* 步驟指示 */}
+              <div className="calibration-steps">
+                <div className={`step ${calibrationStep >= 1 ? 'active' : ''} ${calibrationStep > 1 ? 'done' : ''}`}>
+                  <span className="step-number">1</span>
+                  <span className="step-label">靜音採樣</span>
+                </div>
+                <div className="step-connector" />
+                <div className={`step ${calibrationStep >= 2 ? 'active' : ''} ${calibrationStep > 2 ? 'done' : ''}`}>
+                  <span className="step-number">2</span>
+                  <span className="step-label">說話採樣</span>
+                </div>
+                <div className="step-connector" />
+                <div className={`step ${calibrationStep >= 3 ? 'active' : ''}`}>
+                  <span className="step-number">3</span>
+                  <span className="step-label">驗證測試</span>
+                </div>
+              </div>
+
+              {/* 訊息 */}
+              <div className="calibration-message">{calibrationMessage}</div>
+
+              {/* 進度條 */}
+              {calibrationStep < 3 && (
+                <div className="calibration-progress-bar">
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${calibrationProgress}%` }}
+                  />
+                </div>
+              )}
+
+              {/* 驗證階段的即時指示器 */}
+              {calibrationStep === 3 && (
+                <div className="verification-indicator">
+                  <div className={`speaking-light ${isSpeaking() ? 'on' : 'off'}`}>
+                    {isSpeaking() ? '說話中' : '靜音'}
+                  </div>
+                  <div className="current-volume">
+                    目前音量: {Math.round(micVolume)}
+                    {calibrationData && (
+                      <span className="threshold-hint">
+                        （閾值: {calibrationData.speakingThreshold}）
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 校準結果預覽 */}
+              {calibrationStep === 3 && calibrationData && (
+                <div className="calibration-result-preview">
+                  <h4>校準結果</h4>
+                  <div className="calibration-params">
+                    <div className="param-item">
+                      <span className="param-label">靜音平均</span>
+                      <span className="param-value">{calibrationData.silenceAvg}</span>
+                    </div>
+                    <div className="param-item">
+                      <span className="param-label">說話平均</span>
+                      <span className="param-value">{calibrationData.speechAvg}</span>
+                    </div>
+                    <div className="param-item">
+                      <span className="param-label">說話閾值</span>
+                      <span className="param-value highlight">{calibrationData.speakingThreshold}</span>
+                    </div>
+                    <div className="param-item">
+                      <span className="param-label">VAD 起點</span>
+                      <span className="param-value">{calibrationData.vadStartThreshold}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 操作按鈕 */}
+              <div className="calibration-actions">
+                {calibrationStep === 3 && (
+                  <button className="calibration-btn primary" onClick={saveCalibration}>
+                    儲存校準結果
+                  </button>
+                )}
+                <button className="calibration-btn secondary" onClick={cancelCalibration}>
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 校準完成 */}
+          {calibrationStep === 4 && (
+            <div className="calibration-complete">
+              <div className="success-icon">✓</div>
+              <p>{calibrationMessage}</p>
+              <button className="calibration-btn secondary" onClick={() => setCalibrationStep(0)}>
+                完成
+              </button>
+            </div>
+          )}
         </section>
 
         {/* 翻譯測試區塊 */}
