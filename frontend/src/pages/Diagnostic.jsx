@@ -62,6 +62,7 @@ export default function Diagnostic() {
   const audioChunksRef = useRef([]);
   const calibrationSamplesRef = useRef([]); // 校準時收集的音量樣本
   const calibrationIntervalRef = useRef(null);
+  const currentVolumeRef = useRef(0); // 即時音量 ref（供校準使用）
 
   // 載入已儲存的校準資料
   useEffect(() => {
@@ -203,6 +204,7 @@ export default function Diagnostic() {
           // 計算音量
           const average = frequencyData.reduce((a, b) => a + b, 0) / frequencyData.length;
           setMicVolume(average);
+          currentVolumeRef.current = average; // 同步更新 ref（供校準使用）
 
           // 更新峰值音量（保持 1 秒）
           if (average > peakVolume) {
@@ -568,16 +570,29 @@ export default function Diagnostic() {
     setCalibrationMessage('請保持安靜，正在採樣背景噪音...');
     calibrationSamplesRef.current = [];
 
+    console.log('[校準] 開始靜音採樣...');
+
     // 開始收集靜音樣本 (5秒)
     const samples = [];
     let elapsed = 0;
+    let secondCounter = 0;
     const duration = 5000; // 5秒
     const interval = 50; // 每50ms採樣一次
 
     calibrationIntervalRef.current = setInterval(() => {
-      samples.push(micVolume);
+      const volume = currentVolumeRef.current; // 使用 ref 取得即時音量
+      samples.push(volume);
       elapsed += interval;
       setCalibrationProgress(Math.round((elapsed / duration) * 100));
+
+      // 每秒印出一次音量
+      const currentSecond = Math.floor(elapsed / 1000);
+      if (currentSecond > secondCounter) {
+        secondCounter = currentSecond;
+        const recentSamples = samples.slice(-20); // 最近 1 秒的樣本
+        const avgRecent = recentSamples.reduce((a, b) => a + b, 0) / recentSamples.length;
+        console.log(`[校準] 靜音採樣 第${currentSecond}秒: 即時=${volume.toFixed(1)}, 平均=${avgRecent.toFixed(1)}`);
+      }
 
       if (elapsed >= duration) {
         clearInterval(calibrationIntervalRef.current);
@@ -591,31 +606,51 @@ export default function Diagnostic() {
     // 計算靜音統計
     const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
     const max = Math.max(...samples);
+    const min = Math.min(...samples);
     const stdDev = Math.sqrt(
       samples.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / samples.length
     );
 
     calibrationSamplesRef.current = {
-      silence: { samples, avg, max, stdDev }
+      silence: { samples, avg, max, min, stdDev }
     };
 
-    console.log('[校準] 靜音採樣完成:', { avg, max, stdDev });
+    console.log('[校準] 靜音採樣完成:', {
+      樣本數: samples.length,
+      平均: avg.toFixed(1),
+      最大: max.toFixed(1),
+      最小: min.toFixed(1),
+      標準差: stdDev.toFixed(1)
+    });
 
     // 進入說話採樣階段
     setCalibrationStep(2);
     setCalibrationProgress(0);
     setCalibrationMessage('請正常說話 5 秒，例如數 1 到 10...');
 
+    console.log('[校準] 開始說話採樣...');
+
     // 開始收集說話樣本 (5秒)
     const speechSamples = [];
     let elapsed = 0;
+    let secondCounter = 0;
     const duration = 5000;
     const interval = 50;
 
     calibrationIntervalRef.current = setInterval(() => {
-      speechSamples.push(micVolume);
+      const volume = currentVolumeRef.current; // 使用 ref 取得即時音量
+      speechSamples.push(volume);
       elapsed += interval;
       setCalibrationProgress(Math.round((elapsed / duration) * 100));
+
+      // 每秒印出一次音量
+      const currentSecond = Math.floor(elapsed / 1000);
+      if (currentSecond > secondCounter) {
+        secondCounter = currentSecond;
+        const recentSamples = speechSamples.slice(-20); // 最近 1 秒的樣本
+        const avgRecent = recentSamples.reduce((a, b) => a + b, 0) / recentSamples.length;
+        console.log(`[校準] 說話採樣 第${currentSecond}秒: 即時=${volume.toFixed(1)}, 平均=${avgRecent.toFixed(1)}`);
+      }
 
       if (elapsed >= duration) {
         clearInterval(calibrationIntervalRef.current);
@@ -643,7 +678,15 @@ export default function Diagnostic() {
 
     calibrationSamplesRef.current.speech = { samples, avg, max, min, stdDev, speechAvg };
 
-    console.log('[校準] 說話採樣完成:', { avg, max, min, stdDev, speechAvg });
+    console.log('[校準] 說話採樣完成:', {
+      樣本數: samples.length,
+      平均: avg.toFixed(1),
+      最大: max.toFixed(1),
+      最小: min.toFixed(1),
+      標準差: stdDev.toFixed(1),
+      說話平均: speechAvg.toFixed(1),
+      高於靜音的樣本數: speechOnlySamples.length
+    });
 
     // 計算校準參數
     calculateCalibration();
@@ -654,12 +697,26 @@ export default function Diagnostic() {
     const silence = calibrationSamplesRef.current.silence;
     const speech = calibrationSamplesRef.current.speech;
 
+    console.log('[校準] 開始計算閾值...');
+    console.log('[校準] 靜音數據:', {
+      平均: silence.avg.toFixed(1),
+      最大: silence.max.toFixed(1),
+      標準差: silence.stdDev.toFixed(1)
+    });
+    console.log('[校準] 說話數據:', {
+      平均: speech.avg.toFixed(1),
+      說話平均: speech.speechAvg.toFixed(1),
+      最大: speech.max.toFixed(1)
+    });
+
     // 計算閾值
     // 靜音閾值 = 靜音平均 + 2倍標準差
     const silenceThreshold = Math.round(silence.avg + silence.stdDev * 2);
+    console.log(`[校準] 靜音閾值 = ${silence.avg.toFixed(1)} + 2*${silence.stdDev.toFixed(1)} = ${silenceThreshold}`);
 
     // 說話閾值 = 靜音閾值和說話平均的中間值
     const speakingThreshold = Math.round((silenceThreshold + speech.speechAvg) / 2);
+    console.log(`[校準] 說話閾值 = (${silenceThreshold} + ${speech.speechAvg.toFixed(1)}) / 2 = ${speakingThreshold}`);
 
     // VAD 開始閾值 = 說話閾值的 80%
     const vadStartThreshold = Math.round(speakingThreshold * 0.8);
@@ -681,7 +738,7 @@ export default function Diagnostic() {
     };
 
     setCalibrationData(calibration);
-    console.log('[校準] 計算完成:', calibration);
+    console.log('[校準] 最終結果:', calibration);
 
     // 進入驗證階段
     setCalibrationStep(3);
